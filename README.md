@@ -12,3 +12,16 @@ and a low level access to websocket packat crafting.
 Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
 in production.
+
+# Comparision.
+
+| Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)|
+| --------------------------------------- |:--------------:| -----:|
+| Passes Autobahn Test Suite              | On development | Yes |
+| Receive fragmented message              | On development | Yes  |
+| Send close message                      | Yes            | Yes |
+| Send pings and receive pongs            | Yes            | Yes |
+| Get the type of a received data message | Yes            | Yes |
+| Compression Extensions                  | On development | Experimental |
+| Read message using io.Reader            | On development | Yes |
+| Write message using io.WriteCloser      | On development | Yes |

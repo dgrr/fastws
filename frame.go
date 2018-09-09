@@ -113,9 +113,37 @@ func (fr *Frame) HasRSV3() bool {
 	return fr.raw[0]&rsv3Bit != 0
 }
 
-// OpCode returns the code setted in fr.
-func (fr *Frame) OpCode() Code {
+// Code returns the code set in fr.
+func (fr *Frame) Code() Code {
 	return Code(fr.raw[0] & 15)
+}
+
+// Mode returns frame mode.
+func (fr *Frame) Mode() (mode Mode) {
+	switch fr.Code() {
+	case CodeText:
+		mode = ModeText
+	case CodeBinary:
+		mode = ModeBinary
+	default:
+		mode = ModeNone
+	}
+	return
+}
+
+// IsPong returns true if Code is CodePing.
+func (fr *Frame) IsPing() bool {
+	return fr.Code() == CodePing
+}
+
+// IsPong returns true if Code is CodePong.
+func (fr *Frame) IsPong() bool {
+	return fr.Code() == CodePong
+}
+
+// IsClose returns true if Code is CodeClose.
+func (fr *Frame) IsClose() bool {
+	return fr.Code() == CodeClose
 }
 
 // IsMasked checks if Mask bit is set.
@@ -165,44 +193,44 @@ func (fr *Frame) SetRSV3() {
 	fr.raw[0] |= rsv3Bit
 }
 
-// SetOpCode sets code bits.
-func (fr *Frame) SetOpCode(code Code) {
+// SetCode sets code bits.
+func (fr *Frame) SetCode(code Code) {
 	// TODO: Check non-reserved fields.
 	code &= 15
 	fr.raw[0] |= uint8(code)
 }
 
-// SetContinuation sets CodeContinuation in OpCode field.
+// SetContinuation sets CodeContinuation in Code field.
 func (fr *Frame) SetContinuation() {
-	fr.SetOpCode(CodeContinuation)
+	fr.SetCode(CodeContinuation)
 }
 
-// SetText sets CodeText in OpCode field.
+// SetText sets CodeText in Code field.
 func (fr *Frame) SetText() {
-	fr.SetOpCode(CodeText)
+	fr.SetCode(CodeText)
 }
 
-// SetText sets CodeText in OpCode field.
+// SetText sets CodeText in Code field.
 func (fr *Frame) SetBinary() {
-	fr.SetOpCode(CodeBinary)
+	fr.SetCode(CodeBinary)
 }
 
-// SetClose sets CodeClose in OpCode field.
+// SetClose sets CodeClose in Code field.
 func (fr *Frame) SetClose() {
-	fr.SetOpCode(CodeClose)
+	fr.SetCode(CodeClose)
 }
 
-// SetPing sets CodePing in OpCode field.
+// SetPing sets CodePing in Code field.
 func (fr *Frame) SetPing() {
-	fr.SetOpCode(CodePing)
+	fr.SetCode(CodePing)
 }
 
-// SetPong sets CodePong in OpCode field.
+// SetPong sets CodePong in Code field.
 func (fr *Frame) SetPong() {
-	fr.SetOpCode(CodePong)
+	fr.SetCode(CodePong)
 }
 
-// SetMask sets CodeMask in OpCode field.
+// SetMask sets mask key to mask the frame and enabled mask bit.
 func (fr *Frame) SetMask(b []byte) {
 	fr.raw[1] |= maskBit
 	fr.mask = append(fr.mask[:0], b...)
@@ -236,6 +264,7 @@ func (fr *Frame) setLength(n int) {
 
 // SetExtensionLength sets the extension length.
 func (fr *Frame) SetExtensionLength(n int) {
+	// TODO: Support extensions
 	fr.extensionLength = n
 }
 
@@ -316,6 +345,7 @@ func (fr *Frame) appendByLen() (err error) {
 }
 
 var (
+	EOF                = errors.New("Closed received")
 	errMalformedHeader = errors.New("Malformed header.")
 	errBadHeaderSize   = errors.New("Header size is insufficient.")
 )

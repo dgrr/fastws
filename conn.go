@@ -11,7 +11,8 @@ import (
 type Mode uint8
 
 const (
-	ModeText Mode = iota
+	ModeNone Mode = iota
+	ModeText
 	ModeBinary
 )
 
@@ -21,7 +22,7 @@ var connPool sync.Pool
 //
 // This handler is compatible with io.Reader, io.ReaderFrom, io.Writer, io.WriterTo
 type Conn struct {
-	sync.Mutex
+	lck sync.Locker
 
 	c net.Conn
 
@@ -29,7 +30,6 @@ type Conn struct {
 	rpool sync.Pool
 
 	server bool
-	closed bool
 
 	// extra bytes
 	extra []byte
@@ -47,6 +47,10 @@ func acquireConn(c net.Conn) (conn *Conn) {
 	}
 	conn.Reset(c)
 	return conn
+}
+
+func releaseConn(conn *Conn) {
+	connPool.Put(conn)
 }
 
 func (conn *Conn) acquireReader() (br *bufio.Reader) {
@@ -84,7 +88,9 @@ func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
 		conn.Close()
 	}
-	conn.closed = false
+	if conn.lck == nil {
+		conn.lck = &sync.Mutex{}
+	}
 	conn.extra = conn.extra[:0]
 	conn.c = c
 }
@@ -96,7 +102,8 @@ func (conn *Conn) Write(b []byte) (int, error) {
 
 // Read fills b using conn.Mode as default.
 func (conn *Conn) Read(b []byte) (int, error) {
-	return conn.read(conn.Mode, b)
+	n, _, err := conn.read(b)
+	return n, err
 }
 
 // WriteMode writes b to conn using mode.
@@ -104,11 +111,19 @@ func (conn *Conn) WriteMode(mode Mode, b []byte) (int, error) {
 	return conn.write(mode, b)
 }
 
-// ReadMode fills b reading from conn using mode.
-//
-// Default mode in Read is conn.Mode
-func (conn *Conn) ReadMode(mode Mode, b []byte) (int, error) {
-	return conn.read(mode, b)
+// ReadMode fills b reading from conn and returns the mode.
+func (conn *Conn) ReadMode(b []byte) (int, Mode, error) {
+	return conn.read(b)
+}
+
+// WriteCode writes code to conn.
+func (conn *Conn) WriteCode(code Code) (int, error) {
+	fr := AcquireFrame()
+	fr.SetFin()
+	fr.SetCode(code)
+	n, err := conn.WriteFrame(fr)
+	ReleaseFrame(fr)
+	return n, err
 }
 
 // WriteFrame writes fr to the connection endpoint.
@@ -125,7 +140,19 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 // ReadFrame fills fr with the next connection frame.
 func (conn *Conn) ReadFrame(fr *Frame) (int, error) {
 	br := conn.acquireReader()
+fread:
 	nn, err := fr.ReadFrom(br)
+	if err == nil {
+		switch {
+		case fr.IsPing():
+			conn.WriteCode(CodePong)
+		case fr.IsPong():
+			fr.Reset()
+			goto fread
+		case fr.IsClose():
+			err = EOF
+		}
+	}
 	conn.releaseReader(br)
 	return int(nn), err
 }
@@ -158,7 +185,12 @@ func (conn *Conn) write(mode Mode, b []byte) (n int, err error) {
 
 	// TODO: Apply continuation frames if b is large.
 	fr.SetFin()
-	fr.SetText()
+	switch mode {
+	case ModeText, ModeNone:
+		fr.SetText()
+	case ModeBinary:
+		fr.SetBinary()
+	}
 	fr.SetPayload(b)
 	if !conn.server {
 		fr.Mask()
@@ -177,13 +209,13 @@ func (conn *Conn) write(mode Mode, b []byte) (n int, err error) {
 }
 
 // TODO: Add timeout
-func (conn *Conn) read(mode Mode, b []byte) (n int, err error) {
+func (conn *Conn) read(b []byte) (n int, mode Mode, err error) {
 	if conn.checkClose() {
 		err = io.EOF
 		return
 	}
 
-	var nn uint64
+	var nn int
 	var c int
 	max := len(b)
 	// TODO: Check concurrency
@@ -199,11 +231,8 @@ func (conn *Conn) read(mode Mode, b []byte) (n int, err error) {
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
 
-	br := conn.acquireReader()
-	defer conn.releaseReader(br)
-
 	for n < max {
-		nn, err = fr.ReadFrom(br)
+		nn, err = conn.ReadFrame(fr)
 		if err != nil {
 			break
 		}
@@ -219,6 +248,7 @@ func (conn *Conn) read(mode Mode, b []byte) (n int, err error) {
 		}
 		fr.Reset()
 	}
+	mode = fr.Mode()
 	if c < int(nn) {
 		conn.extra = append(conn.extra[:0], fr.payload[c:]...)
 	}
@@ -240,19 +270,18 @@ func (conn *Conn) Close() error {
 	if err == nil {
 		err = conn.c.Close()
 		if err == nil {
+			conn.lck.Lock()
 			conn.c = nil
-			conn.Lock()
-			conn.closed = true
-			conn.Unlock()
+			conn.lck.Unlock()
 		}
 	}
 	return err
 }
 
 func (conn *Conn) checkClose() (closed bool) {
-	conn.Lock()
-	closed = conn.closed
-	conn.Unlock()
+	conn.lck.Lock()
+	closed = (conn.c == nil)
+	conn.lck.Unlock()
 	return
 }
 
