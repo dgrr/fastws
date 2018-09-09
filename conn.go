@@ -148,6 +148,10 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
+	if conn.checkClose() {
+		return 0, io.EOF
+	}
+
 	bw := conn.acquireWriter()
 	nn, err := fr.WriteTo(bw)
 	if err == nil {
