@@ -25,5 +25,3 @@ in production allowing low level access to the websocket frames.
 | Compression Extensions                  | On development | Experimental |
 | Read message using io.Reader            | On development | Yes |
 | Write message using io.WriteCloser      | On development | Yes |
-=======
-
