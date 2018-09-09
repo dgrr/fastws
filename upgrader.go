@@ -11,7 +11,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// RequestHandler ...
+// RequestHandler is the websocket handler.
 type RequestHandler func(conn *Conn)
 
 // Upgrader upgrades HTTP connection to a websocket connection if it's possible.
@@ -21,10 +21,10 @@ type Upgrader struct {
 	// Handler is the request Handler for ws connections.
 	Handler RequestHandler
 
-	// Protocols ...
+	// Protocols are the supported protocols.
 	Protocols []string
 
-	// Compress ...
+	// TODO: Compress
 	Compress bool
 }
 

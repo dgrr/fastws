@@ -2,12 +2,15 @@ package fastws
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"net"
 	"sync"
 )
 
 type StatusCode uint16
+
+// TODO: doc for status
 
 const (
 	StatusNone              = 1000
@@ -23,6 +26,8 @@ const (
 )
 
 // Mode is the mode in which the bytes are sended.
+//
+// https://tools.ietf.org/html/rfc6455#section-5.6
 type Mode uint8
 
 const (
@@ -101,7 +106,7 @@ func (conn *Conn) releaseWriter(bw *bufio.Writer) {
 // Reset resets conn values setting c as default connection endpoint.
 func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
-		conn.Close(nil)
+		conn.Close("")
 	}
 	if conn.lck == nil {
 		conn.lck = &sync.Mutex{}
@@ -125,6 +130,11 @@ func (conn *Conn) WriteMessage(mode Mode, b []byte) (int, error) {
 // b is used to avoid extra allocations and can be nil.
 func (conn *Conn) ReadMessage(b []byte) (Mode, []byte, error) {
 	return conn.read(b[:0])
+}
+
+// SendCodeString writes code, status and message to conn as SendCode does.
+func (conn *Conn) SendCodeString(code Code, status StatusCode, b string) error {
+	return conn.SendCode(code, status, s2b(b))
 }
 
 // SendCode writes code, status and message to conn.
@@ -165,26 +175,44 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	br := conn.acquireReader()
 	var n uint64
+	var c bool
 	for {
 		n, err = fr.ReadFrom(br)
 		nn = int(n)
 		if err == nil {
-			switch {
-			case fr.IsPing():
-				conn.SendCode(CodePong, 0, nil)
-				fr.Reset()
+			c, err = conn.checkRequirements(fr)
+			if c {
 				continue
-			case fr.IsPong():
-				fr.Reset()
-				continue
-			case fr.IsClose():
-				err = EOF
 			}
 		}
 		break
 	}
 	conn.releaseReader(br)
 	return nn, err
+}
+
+func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
+	if !conn.server && fr.IsMasked() { // if server masked content
+		err = fmt.Errorf("Server sent masked content")
+		return
+	}
+
+	switch {
+	case fr.IsPing():
+		conn.SendCode(CodePong, 0, nil)
+		fr.Reset()
+		c = true
+	case fr.IsPong():
+		fr.Reset()
+		c = true
+	case fr.IsClose():
+		if fr.Len() > 0 {
+			err = fmt.Errorf("%s: %s", EOF, fr.Payload())
+		} else {
+			err = EOF
+		}
+	}
+	return
 }
 
 // NextFrame reads next connection frame and returns if there were no error.
@@ -256,13 +284,13 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	return fr.Mode(), b, err
 }
 
-// Close closes the connection sending CodeClose and b and closing the descriptor.
-func (conn *Conn) Close(b []byte) error {
+// Close sends b as close reason and closes the descriptor.
+func (conn *Conn) Close(b string) error {
 	if conn.checkClose() {
 		return nil
 	}
 
-	err := conn.SendCode(CodeClose, StatusNone, b)
+	err := conn.SendCodeString(CodeClose, StatusNone, b)
 	if err == nil {
 		err = conn.c.Close()
 		if err == nil {
@@ -280,5 +308,3 @@ func (conn *Conn) checkClose() (closed bool) {
 	conn.lck.Unlock()
 	return
 }
-
-// TODO: https://tools.ietf.org/html/rfc6455#section-5.4

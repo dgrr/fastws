@@ -27,7 +27,7 @@ func wsHandler(conn *fastws.Conn) {
 	signal.Stop(sigCh)
 	signal.Reset(os.Interrupt)
 
-	conn.Close(nil)
+	conn.Close("Because I want")
 }
 
 func handleConn(conn *fastws.Conn) {
