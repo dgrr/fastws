@@ -6,12 +6,12 @@ See [examples](https://github.com/dgrr/fastws/blob/master/examples) to see how t
 
 # Why another websocket package?
 
-Another websocket packages does not allow concurrent Read/Write operations
-and a low level access to websocket packat crafting.
+Other websocket packages does not allow concurrent Read/Write operations
+and a does not provide low level access to websocket packet crafting.
 
 Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
-in production.
+in production allowing low level access to the websocket frames.
 
 # Comparision.
 
@@ -25,3 +25,5 @@ in production.
 | Compression Extensions                  | On development | Experimental |
 | Read message using io.Reader            | On development | Yes |
 | Write message using io.WriteCloser      | On development | Yes |
+=======
+
