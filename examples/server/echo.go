@@ -34,6 +34,8 @@ func handleConn(conn *fastws.Conn) {
 	fr := fastws.AcquireFrame()
 	defer fastws.ReleaseFrame(fr)
 
+	conn.WriteString("Hello")
+
 	for {
 		_, err := conn.ReadFrame(fr)
 		if err != nil {
