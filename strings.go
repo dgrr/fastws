@@ -1,6 +1,7 @@
 package fastws
 
 var (
+	originString      = []byte("Origin")
 	connectionString  = []byte("Connection")
 	upgradeString     = []byte("Upgrade")
 	wsString          = []byte("websocket")

@@ -18,7 +18,7 @@ in production allowing low level access to the websocket frames.
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)|
 | --------------------------------------- |:--------------:| -----:|
 | Passes Autobahn Test Suite              | On development | Yes |
-| Receive fragmented message              | On development | Yes  |
+| Receive fragmented message              | Yes            | Yes  |
 | Send close message                      | Yes            | Yes |
 | Send pings and receive pongs            | Yes            | Yes |
 | Get the type of a received data message | Yes            | Yes |

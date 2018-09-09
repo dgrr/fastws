@@ -7,6 +7,21 @@ import (
 	"sync"
 )
 
+type StatusCode uint16
+
+const (
+	StatusNone              = 1000
+	StatusGoAway            = 1001
+	StatusProtocolError     = 1002
+	StatusNotAcceptable     = 1003
+	StatusReserved          = 1004
+	StatusNotConsistent     = 1007
+	StatusViolation         = 1008
+	StatusTooBig            = 1009
+	StatuseExtensionsNeeded = 1010
+	StatusUnexpected        = 1011
+)
+
 // Mode is the mode in which the bytes are sended.
 type Mode uint8
 
@@ -86,7 +101,7 @@ func (conn *Conn) releaseWriter(bw *bufio.Writer) {
 // Reset resets conn values setting c as default connection endpoint.
 func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
-		conn.Close()
+		conn.Close(nil)
 	}
 	if conn.lck == nil {
 		conn.lck = &sync.Mutex{}
@@ -100,30 +115,35 @@ func (conn *Conn) Write(b []byte) (int, error) {
 	return conn.write(conn.Mode, b)
 }
 
-// Read fills b using conn.Mode as default.
-func (conn *Conn) Read(b []byte) (int, error) {
-	n, _, err := conn.read(b)
-	return n, err
-}
-
-// WriteMode writes b to conn using mode.
-func (conn *Conn) WriteMode(mode Mode, b []byte) (int, error) {
+// WriteMessage writes b to conn using mode.
+func (conn *Conn) WriteMessage(mode Mode, b []byte) (int, error) {
 	return conn.write(mode, b)
 }
 
-// ReadMode fills b reading from conn and returns the mode.
-func (conn *Conn) ReadMode(b []byte) (int, Mode, error) {
-	return conn.read(b)
+// ReadMessage reads next message from conn and returns the mode, b and/or error.
+//
+// b is used to avoid extra allocations and can be nil.
+func (conn *Conn) ReadMessage(b []byte) (Mode, []byte, error) {
+	return conn.read(b[:0])
 }
 
-// WriteCode writes code to conn.
-func (conn *Conn) WriteCode(code Code) (int, error) {
+// SendCode writes code, status and message to conn.
+//
+// status is used by CodeClose to report any close status (as HTTP responses). Can be 0.
+// b can be nil.
+func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 	fr := AcquireFrame()
 	fr.SetFin()
 	fr.SetCode(code)
-	n, err := conn.WriteFrame(fr)
+	if status > 0 {
+		fr.setError(status)
+	}
+	if b != nil {
+		fr.Write(b)
+	}
+	_, err := conn.WriteFrame(fr)
 	ReleaseFrame(fr)
-	return n, err
+	return err
 }
 
 // WriteFrame writes fr to the connection endpoint.
@@ -138,28 +158,34 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 }
 
 // ReadFrame fills fr with the next connection frame.
-func (conn *Conn) ReadFrame(fr *Frame) (int, error) {
+func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	br := conn.acquireReader()
-fread:
-	nn, err := fr.ReadFrom(br)
-	if err == nil {
-		switch {
-		case fr.IsPing():
-			conn.WriteCode(CodePong)
-		case fr.IsPong():
-			fr.Reset()
-			goto fread
-		case fr.IsClose():
-			err = EOF
+	var n uint64
+	for {
+		n, err = fr.ReadFrom(br)
+		nn = int(n)
+		if err == nil {
+			switch {
+			case fr.IsPing():
+				conn.SendCode(CodePong, 0, nil)
+				fr.Reset()
+				continue
+			case fr.IsPong():
+				fr.Reset()
+				continue
+			case fr.IsClose():
+				err = EOF
+			}
 		}
+		break
 	}
 	conn.releaseReader(br)
-	return int(nn), err
+	return nn, err
 }
 
 // NextFrame reads next connection frame and returns if there were no error.
 //
-// If NextFrame does not return any error do not forget to ReleaseFrame(fr)
+// If NextFrame fr is not nil do not forget to ReleaseFrame(fr)
 func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	br := conn.acquireReader()
 	fr = AcquireFrame()
@@ -173,65 +199,39 @@ func (conn *Conn) NextFrame() (fr *Frame, err error) {
 }
 
 // TODO: Add timeout
-func (conn *Conn) write(mode Mode, b []byte) (n int, err error) {
+func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	if conn.checkClose() {
-		err = io.EOF
-		return
+		return 0, io.EOF
 	}
 
-	var nn uint64
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
 
 	// TODO: Apply continuation frames if b is large.
 	fr.SetFin()
-	switch mode {
-	case ModeText, ModeNone:
-		fr.SetText()
-	case ModeBinary:
+	if mode == ModeBinary {
 		fr.SetBinary()
+	} else {
+		fr.SetText()
 	}
+
 	fr.SetPayload(b)
 	if !conn.server {
 		fr.Mask()
 	}
-
-	bw := conn.acquireWriter()
-	defer conn.releaseWriter(bw)
-
-	nn, err = fr.WriteTo(bw)
-	n = int(nn)
-	if err == nil {
-		err = bw.Flush()
-	}
-
-	return
+	return conn.WriteFrame(fr)
 }
 
 // TODO: Add timeout
-func (conn *Conn) read(b []byte) (n int, mode Mode, err error) {
-	if conn.checkClose() {
-		err = io.EOF
-		return
-	}
-
-	var nn int
-	var c int
-	max := len(b)
-	// TODO: Check concurrency
-	if n = len(conn.extra); n > 0 {
-		n = copy(b, conn.extra)
-		// TODO: Check allocations
-		conn.extra = conn.extra[n:]
-		if n == max {
-			return
-		}
-	}
+func (conn *Conn) read(b []byte) (Mode, []byte, error) {
+	var mode Mode
 
 	fr := AcquireFrame()
+	//fr.setRsvFromConn(conn)
+	//fr.setExtensionLength(conn.extensionLength)
 	defer ReleaseFrame(fr)
 
-	for n < max {
+	for !conn.checkClose() {
 		nn, err = conn.ReadFrame(fr)
 		if err != nil {
 			break
@@ -240,33 +240,25 @@ func (conn *Conn) read(b []byte) (n int, mode Mode, err error) {
 			fr.Unmask()
 		}
 
-		c = copy(b[n:], fr.payload)
-		n += c
+		b = append(b, fr.payload...)
 
 		if fr.IsFin() {
 			break
 		}
-		fr.Reset()
+
+		fr.resetHeader()
+		fr.resetPayload()
 	}
-	mode = fr.Mode()
-	if c < int(nn) {
-		conn.extra = append(conn.extra[:0], fr.payload[c:]...)
-	}
-	return
+	return fr.Mode(), b, err
 }
 
-// Close closes the connection sending CodeClose and closing the descriptor.
-func (conn *Conn) Close() error {
+// Close closes the connection sending CodeClose and b and closing the descriptor.
+func (conn *Conn) Close(b []byte) error {
 	if conn.checkClose() {
 		return nil
 	}
 
-	fr := AcquireFrame()
-	defer ReleaseFrame(fr)
-
-	fr.SetFin()
-	fr.SetClose()
-	_, err := conn.WriteFrame(fr)
+	err := conn.SendCode(CodeClose, StatusNone, b)
 	if err == nil {
 		err = conn.c.Close()
 		if err == nil {

@@ -80,17 +80,32 @@ func ReleaseFrame(fr *Frame) {
 	framePool.Put(fr)
 }
 
-// Reset resets all Frame values to be reused.
-func (fr *Frame) Reset() {
-	fr.rsv1 = false
-	fr.rsv2 = false
-	fr.rsv3 = false
+func (fr *Frame) resetPayload() {
+	fr.payload = fr.payload[:0]
+}
+
+func (fr *Frame) resetHeader() {
 	fr.size = 0
-	fr.extensionLength = 0
+	fr.mask = fr.mask[:4]
+	fr.raw = fr.raw[:maxHeaderSize]
+	fr.rawCopy = fr.rawCopy[:maxHeaderSize]
 	copy(fr.mask, zeroBytes)
 	copy(fr.raw, zeroBytes)
 	copy(fr.rawCopy, zeroBytes)
-	fr.payload = fr.payload[:0]
+}
+
+func (fr *Frame) resetValues() {
+	fr.rsv1 = false
+	fr.rsv2 = false
+	fr.rsv3 = false
+	fr.extensionLength = 0
+}
+
+// Reset resets all Frame values to be reused.
+func (fr *Frame) Reset() {
+	fr.resetHeader()
+	fr.resetValues()
+	fr.resetPayload()
 }
 
 // IsFin checks if FIN bit is set.
@@ -139,6 +154,10 @@ func (fr *Frame) IsPing() bool {
 // IsPong returns true if Code is CodePong.
 func (fr *Frame) IsPong() bool {
 	return fr.Code() == CodePong
+}
+
+func (fr *Frame) IsContinuation() bool {
+	return fr.Code() == CodeContinuation
 }
 
 // IsClose returns true if Code is CodeClose.
@@ -238,13 +257,18 @@ func (fr *Frame) SetMask(b []byte) {
 
 // Write writes b to the frame payload.
 func (fr *Frame) Write(b []byte) (int, error) {
-	fr.payload = append(fr.payload, b...)
-	return len(b), nil
+	n := len(fr.payload)
+	fr.setPayload(n, b)
+	return n, nil
 }
 
 // SetPayload sets payload to fr.
 func (fr *Frame) SetPayload(b []byte) {
-	n := len(b)
+	fr.setPayload(0, b)
+}
+
+func (fr *Frame) setPayload(i int, b []byte) {
+	n := len(b) + i
 	switch {
 	case n > 65535:
 		fr.setLength(127)
@@ -255,7 +279,7 @@ func (fr *Frame) SetPayload(b []byte) {
 	default:
 		fr.setLength(n)
 	}
-	fr.payload = append(fr.payload[:0], b...)
+	fr.payload = append(fr.payload[:i], b...)
 }
 
 func (fr *Frame) setLength(n int) {
@@ -312,6 +336,14 @@ func (fr *Frame) prepare() (err error) {
 	return
 }
 
+func (fr *Frame) setError(status StatusCode) {
+	if cap(fr.payload) < 2 {
+		fr.payload = append(fr.payload, make([]byte, 2)...)
+	}
+	fr.payload = fr.payload[:2]
+	binary.BigEndian.PutUint16(fr.payload, uint16(status))
+}
+
 func (fr *Frame) mustRead() (n int) {
 	n = int(fr.Len())
 	switch {
@@ -345,9 +377,9 @@ func (fr *Frame) appendByLen() (err error) {
 }
 
 var (
-	EOF                = errors.New("Closed received")
-	errMalformedHeader = errors.New("Malformed header.")
-	errBadHeaderSize   = errors.New("Header size is insufficient.")
+	EOF                = errors.New("Closed connection")
+	errMalformedHeader = errors.New("Malformed header")
+	errBadHeaderSize   = errors.New("Header size is insufficient")
 )
 
 // ReadFrom fills fr reading from rd.
@@ -364,38 +396,44 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 	var n int
 	var b []byte
 
-	b, err = br.Peek(2)
-	if err != nil {
-		return
-	}
-	fr.raw = append(fr.raw[:0], b[0], b[1])
-	br.Discard(2)
+	for {
+		b, err = br.Peek(2)
+		if err != nil {
+			return
+		}
+		fr.raw = append(fr.raw[:0], b[0], b[1])
+		br.Discard(2)
 
-	n = fr.mustRead()
-	if n > 0 {
-		b, err = br.Peek(n)
-		if err == nil {
-			fr.raw = append(fr.raw, b...)
-			br.Discard(n)
-		}
-	}
-	if err == nil {
-		if fr.IsMasked() {
-			b, err = br.Peek(4)
+		n = fr.mustRead()
+		if n > 0 {
+			b, err = br.Peek(n)
 			if err == nil {
-				copy(fr.mask[:4], b)
-				br.Discard(4)
+				fr.raw = append(fr.raw, b...)
+				br.Discard(n)
 			}
 		}
 		if err == nil {
-			b, err = br.Peek(int(fr.Len()))
+			if fr.IsMasked() {
+				b, err = br.Peek(4)
+				if err == nil {
+					copy(fr.mask[:4], b)
+					br.Discard(4)
+				}
+			}
 			if err == nil {
-				nn = uint64(len(b))
-				fr.payload = append(fr.payload[:0], b...)
+				b, err = br.Peek(int(fr.Len()))
+				if err == nil {
+					nn = uint64(len(b))
+					fr.payload = append(fr.payload[:0], b...)
+				}
 			}
 		}
+
+		if !fr.IsContinuation() {
+			break
+		}
+		fr.resetHeader()
 	}
-	fr.raw = fr.raw[:maxHeaderSize]
 	return
 }
 
