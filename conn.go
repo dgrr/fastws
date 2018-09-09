@@ -115,6 +115,11 @@ func (conn *Conn) Reset(c net.Conn) {
 	conn.c = c
 }
 
+// WriteString writes b to conn using conn.Mode as default.
+func (conn *Conn) WriteString(b string) (int, error) {
+	return conn.Write(s2b(b))
+}
+
 // Write writes b using conn.Mode as default.
 func (conn *Conn) Write(b []byte) (int, error) {
 	return conn.write(conn.Mode, b)
@@ -256,6 +261,9 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
+	if conn.checkClose() {
+		return 0, io.EOF
+	}
 	var err error
 
 	fr := AcquireFrame()
