@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"time"
+	"os"
+	"os/signal"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/dgrr/fastws"
@@ -18,15 +19,33 @@ func main() {
 }
 
 func wsHandler(conn *fastws.Conn) {
-	for i := 0; i < 10; i++ {
-		n, err := fmt.Fprintf(conn, "%v\n", time.Now().Unix())
+	sigCh := make(chan os.Signal)
+	signal.Notify(sigCh, os.Interrupt)
+
+	go handleConn(conn)
+	<-sigCh
+	signal.Stop(sigCh)
+	signal.Reset(os.Interrupt)
+
+	conn.Close(nil)
+}
+
+func handleConn(conn *fastws.Conn) {
+	fr := fastws.AcquireFrame()
+	defer fastws.ReleaseFrame(fr)
+
+	for {
+		_, err := conn.ReadFrame(fr)
 		if err != nil {
 			break
 		}
-		fmt.Printf("Sended %d bytes\n", n)
-		time.Sleep(time.Second)
+		if fr.IsMasked() {
+			fr.Unmask()    // unmask/decode payload content
+			fr.UnsetMask() // delete mask bit to be sended from the server
+		}
+		conn.WriteFrame(fr)
+		fr.Reset()
 	}
-	conn.Close()
 }
 
 func rootHandler(ctx *fasthttp.RequestCtx) {
