@@ -77,6 +77,7 @@ func AcquireFrame() *Frame {
 // ReleaseFrame puts fr Frame into the pool.
 func ReleaseFrame(fr *Frame) {
 	fr.Reset()
+	fr.hardReset()
 	framePool.Put(fr)
 }
 
@@ -94,7 +95,7 @@ func (fr *Frame) resetHeader() {
 	copy(fr.rawCopy, zeroBytes)
 }
 
-func (fr *Frame) resetValues() {
+func (fr *Frame) hardReset() {
 	fr.rsv1 = false
 	fr.rsv2 = false
 	fr.rsv3 = false
@@ -104,7 +105,6 @@ func (fr *Frame) resetValues() {
 // Reset resets all Frame values to be reused.
 func (fr *Frame) Reset() {
 	fr.resetHeader()
-	fr.resetValues()
 	fr.resetPayload()
 }
 
@@ -216,6 +216,7 @@ func (fr *Frame) SetRSV3() {
 func (fr *Frame) SetCode(code Code) {
 	// TODO: Check non-reserved fields.
 	code &= 15
+	fr.raw[0] &= 15 << 4
 	fr.raw[0] |= uint8(code)
 }
 
@@ -253,6 +254,11 @@ func (fr *Frame) SetPong() {
 func (fr *Frame) SetMask(b []byte) {
 	fr.raw[1] |= maskBit
 	fr.mask = append(fr.mask[:0], b...)
+}
+
+// UnsetMask drops mask bit.
+func (fr *Frame) UnsetMask() {
+	fr.raw[1] ^= maskBit
 }
 
 // Write writes b to the frame payload.
