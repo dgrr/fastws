@@ -224,7 +224,7 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
-	var mode Mode
+	var err error
 
 	fr := AcquireFrame()
 	//fr.setRsvFromConn(conn)
@@ -232,7 +232,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	defer ReleaseFrame(fr)
 
 	for !conn.checkClose() {
-		nn, err = conn.ReadFrame(fr)
+		_, err = conn.ReadFrame(fr)
 		if err != nil {
 			break
 		}
