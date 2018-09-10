@@ -72,8 +72,13 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 
 			ctx.Hijack(func(c net.Conn) {
 				conn := acquireConn(c)
+				// stablishing default options
 				conn.server = true
+				// executing handler
 				upgr.Handler(conn)
+				// closes and release the connection
+				conn.Close("")
+				releaseConn(conn)
 			})
 		}
 	}

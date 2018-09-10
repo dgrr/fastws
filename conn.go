@@ -54,7 +54,7 @@ type Conn struct {
 	// extra bytes
 	extra []byte
 
-	// Mode indicates Write and Read default mode.
+	// Mode indicates Write default mode.
 	Mode Mode
 }
 
@@ -185,8 +185,7 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 		n, err = fr.ReadFrom(br)
 		nn = int(n)
 		if err == nil {
-			c, err = conn.checkRequirements(fr)
-			if c {
+			if c, err = conn.checkRequirements(fr); c {
 				continue
 			}
 		}
@@ -226,6 +225,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	br := conn.acquireReader()
 	fr = AcquireFrame()
+
 	_, err = fr.ReadFrom(br)
 	conn.releaseReader(br)
 	if err != nil {
@@ -244,7 +244,6 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
 
-	// TODO: Apply continuation frames if b is large.
 	fr.SetFin()
 	if mode == ModeBinary {
 		fr.SetBinary()
@@ -262,7 +261,7 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	if conn.checkClose() {
-		return 0, io.EOF
+		return 0, b, io.EOF
 	}
 	var err error
 
@@ -293,6 +292,8 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 }
 
 // Close sends b as close reason and closes the descriptor.
+//
+// When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
 	if conn.checkClose() {
 		return nil

@@ -26,8 +26,6 @@ func wsHandler(conn *fastws.Conn) {
 	<-sigCh
 	signal.Stop(sigCh)
 	signal.Reset(os.Interrupt)
-
-	conn.Close("Because I want")
 }
 
 func handleConn(conn *fastws.Conn) {
