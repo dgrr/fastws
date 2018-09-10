@@ -177,6 +177,8 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 }
 
 // ReadFrame fills fr with the next connection frame.
+//
+// This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	br := conn.acquireReader()
 	var n uint64
@@ -193,6 +195,20 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	}
 	conn.releaseReader(br)
 	return nn, err
+}
+
+// NextFrame reads next connection frame and returns if there were no error.
+//
+// If NextFrame fr is not nil do not forget to ReleaseFrame(fr)
+// This function responds automatically to PING and PONG messages.
+func (conn *Conn) NextFrame() (fr *Frame, err error) {
+	fr = AcquireFrame()
+	_, err = conn.ReadFrame(fr)
+	if err != nil {
+		ReleaseFrame(fr)
+		fr = nil
+	}
+	return fr, err
 }
 
 func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
@@ -217,22 +233,6 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 		}
 	}
 	return
-}
-
-// NextFrame reads next connection frame and returns if there were no error.
-//
-// If NextFrame fr is not nil do not forget to ReleaseFrame(fr)
-func (conn *Conn) NextFrame() (fr *Frame, err error) {
-	br := conn.acquireReader()
-	fr = AcquireFrame()
-
-	_, err = fr.ReadFrom(br)
-	conn.releaseReader(br)
-	if err != nil {
-		ReleaseFrame(fr)
-		fr = nil
-	}
-	return fr, err
 }
 
 // TODO: Add timeout
