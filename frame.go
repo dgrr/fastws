@@ -390,9 +390,10 @@ var (
 
 // ReadFrom fills fr reading from rd.
 func (fr *Frame) ReadFrom(rd io.Reader) (nn uint64, err error) {
-	if r := rd.(*bufio.Reader); r != nil {
+	switch r := rd.(type) {
+	case *bufio.Reader:
 		nn, err = fr.readBufio(r)
-	} else {
+	default:
 		nn, err = fr.readStd(rd)
 	}
 	return
@@ -429,13 +430,13 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 			if err == nil {
 				b, err = br.Peek(int(fr.Len()))
 				if err == nil {
-					nn = uint64(len(b))
-					fr.payload = append(fr.payload[:0], b...)
+					fr.payload = append(fr.payload[nn:], b...)
+					nn += uint64(len(b))
 				}
 			}
 		}
 
-		if !fr.IsContinuation() {
+		if !fr.IsContinuation() || err != nil {
 			break
 		}
 		fr.resetHeader()
@@ -444,6 +445,37 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 }
 
 func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
-	// TODO
+	var n int
+
+	for {
+		fr.raw = fr.raw[:maxHeaderSize]
+		_, err = br.Read(fr.raw[:2])
+		if err != nil {
+			break
+		}
+
+		n = fr.mustRead()
+		if n > 0 {
+			n, err = br.Read(fr.raw[2:n])
+			if err == nil {
+				copy(fr.mask[:4], fr.raw[2:n])
+			}
+		}
+		if err == nil {
+			fr.payload = fr.payload[:cap(fr.payload)]
+			if n = int(fr.Len()) - (len(fr.payload) - int(nn)); n > 0 {
+				fr.payload = append(fr.payload, make([]byte, n)...)
+			}
+			n, err = br.Read(fr.payload[nn:])
+			if err == nil {
+				fr.payload = fr.payload[:n]
+				nn += uint64(n)
+			}
+		}
+		if !fr.IsContinuation() || err != nil {
+			break
+		}
+		fr.resetHeader()
+	}
 	return
 }
