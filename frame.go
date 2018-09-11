@@ -46,17 +46,17 @@ const (
 // Frame could not be used during message exchanging.
 // This type can be used if you want low level access to websocket.
 type Frame struct {
-	extensionLength int // TODO
-	size            int // header size
+	extensionLen int
 
 	rsv1 bool
 	rsv2 bool
 	rsv3 bool
 
-	raw     []byte
-	rawCopy []byte
-	mask    []byte
-	payload []byte
+	raw       []byte
+	rawCopy   []byte
+	mask      []byte
+	payload   []byte
+	extension []byte
 }
 
 var framePool = sync.Pool{
@@ -83,10 +83,11 @@ func ReleaseFrame(fr *Frame) {
 
 func (fr *Frame) resetPayload() {
 	fr.payload = fr.payload[:0]
+	fr.extension = fr.extension[:0]
 }
 
 func (fr *Frame) resetHeader() {
-	fr.size = 0
+	fr.extensionLen = 0
 	fr.mask = fr.mask[:4]
 	fr.raw = fr.raw[:maxHeaderSize]
 	fr.rawCopy = fr.rawCopy[:maxHeaderSize]
@@ -99,7 +100,7 @@ func (fr *Frame) hardReset() {
 	fr.rsv1 = false
 	fr.rsv2 = false
 	fr.rsv3 = false
-	fr.extensionLength = 0
+	fr.extensionLen = 0
 }
 
 // Reset resets all Frame values to be reused.
@@ -303,7 +304,7 @@ func (fr *Frame) setLength(n int) {
 // SetExtensionLength sets the extension length.
 func (fr *Frame) SetExtensionLength(n int) {
 	// TODO: Support extensions
-	fr.extensionLength = n
+	fr.extensionLen = n
 }
 
 // Mask masks Frame payload.
@@ -444,6 +445,14 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 				}
 			}
 			if err == nil { // reading payload
+				if fr.extensionLen > 0 {
+					b, err = br.Peek(fr.extensionLen)
+					if err != nil {
+						break
+					}
+					fr.extension = append(fr.extension[:0], b...) // TODO: append to zero?
+				}
+
 				b, err = br.Peek(int(fr.Len()))
 				if err == nil {
 					if fr.IsMasked() {
@@ -465,9 +474,10 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 }
 
 var (
-	errReadingHeader = errors.New("error reading frame header")
-	errReadingLen    = errors.New("error reading payload length")
-	errReadingMask   = errors.New("error reading mask")
+	errReadingHeader    = errors.New("error reading frame header")
+	errReadingLen       = errors.New("error reading payload length")
+	errReadingMask      = errors.New("error reading mask")
+	errReadingExtension = errors.New("error reading extension")
 )
 
 func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
@@ -503,6 +513,22 @@ func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 			}
 		}
 		if err == nil { // reading payload
+			if fr.extensionLen > 0 {
+				fr.extension = fr.extension[:cap(fr.extension)]
+				if n = len(fr.extension) - fr.extensionLen; n > 0 {
+					fr.extension = append(fr.extension, make([]byte, n)...)
+				}
+				n, err = br.Read(fr.extension[:fr.extensionLen])
+				if err != nil {
+					break
+				}
+				if fr.extensionLen < n {
+					err = errReadingExtension
+				} else {
+					fr.extension = fr.extension[:n]
+				}
+			}
+
 			fr.payload = fr.payload[:cap(fr.payload)]
 			if n = int(fr.Len()) - (len(fr.payload) - int(nn)); n > 0 {
 				fr.payload = append(fr.payload, make([]byte, n)...)
