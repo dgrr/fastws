@@ -411,26 +411,38 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 		fr.raw = append(fr.raw[:0], b[0], b[1])
 		br.Discard(2)
 
-		n = fr.mustRead()
-		if n > 0 {
+		n = fr.mustRead() // TODO: Panic
+		if n > 0 {        // reading length
 			b, err = br.Peek(n)
 			if err == nil {
-				fr.raw = append(fr.raw, b...)
-				br.Discard(n)
+				if len(b) < n {
+					err = errReadingLen
+				} else {
+					fr.raw = append(fr.raw, b...)
+					br.Discard(n)
+				}
 			}
 		}
 		if err == nil {
 			if fr.IsMasked() {
 				b, err = br.Peek(4)
 				if err == nil {
-					copy(fr.mask[:4], b)
-					br.Discard(4)
+					if len(b) < 4 {
+						err = errReadingMask
+					} else {
+						copy(fr.mask[:4], b)
+						br.Discard(4)
+					}
 				}
 			}
 			if err == nil {
 				b, err = br.Peek(int(fr.Len()))
 				if err == nil {
-					fr.payload = append(fr.payload[nn:], b...)
+					if fr.IsMasked() {
+						mask(fr.mask[:4], b)
+						fr.UnsetMask()
+					}
+					fr.payload = append(fr.payload[:nn], b...)
 					nn += uint64(len(b))
 				}
 			}
@@ -444,21 +456,42 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 	return
 }
 
+var (
+	errReadingHeader = errors.New("error reading frame header")
+	errReadingLen    = errors.New("error reading payload length")
+	errReadingMask   = errors.New("error reading mask")
+)
+
 func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
-	var n int
+	var n, m int
 
 	for {
 		fr.raw = fr.raw[:maxHeaderSize]
-		_, err = br.Read(fr.raw[:2])
+		n, err = br.Read(fr.raw[:2])
 		if err != nil {
 			break
 		}
+		if n < 2 {
+			err = errReadingHeader
+			break
+		}
 
-		n = fr.mustRead()
-		if n > 0 {
-			n, err = br.Read(fr.raw[2:n])
-			if err == nil {
-				copy(fr.mask[:4], fr.raw[2:n])
+		m = fr.mustRead()
+		if m > 0 {
+			n, err = br.Read(fr.raw[2 : m+2])
+			if n < m {
+				err = errReadingLen
+			} else {
+				m += 2
+				n = m
+			}
+		}
+		if fr.IsMasked() && err == nil {
+			m, err = br.Read(fr.raw[n : n+4])
+			if m < 4 {
+				err = errReadingMask
+			} else {
+				copy(fr.mask[:4], fr.raw[n:n+4]) // TODO
 			}
 		}
 		if err == nil {
@@ -468,8 +501,12 @@ func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 			}
 			n, err = br.Read(fr.payload[nn:])
 			if err == nil {
-				fr.payload = fr.payload[:n]
+				if fr.IsMasked() {
+					mask(fr.mask, fr.payload[nn:nn+uint64(n)])
+					fr.UnsetMask()
+				}
 				nn += uint64(n)
+				fr.payload = fr.payload[:nn]
 			}
 		}
 		if !fr.IsContinuation() || err != nil {
