@@ -7,11 +7,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Dial ...
-func Dial(url string) (*Conn, error) {
-	return nil, nil
-}
-
 // Upgrade returns a RequestHandler for fasthttp resuming upgrading process.
 func Upgrade(handler RequestHandler) fasthttp.RequestHandler {
 	upgr := Upgrader{
