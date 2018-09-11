@@ -171,15 +171,23 @@ func (fr *Frame) IsMasked() bool {
 }
 
 // Len returns payload length based on Frame field of length bytes.
-func (fr *Frame) Len() (len uint64) {
-	len = uint64(fr.raw[1] & 127)
-	switch len {
+func (fr *Frame) Len() (length uint64) {
+	length = uint64(fr.raw[1] & 127)
+	switch length {
 	case 126:
-		len = uint64(binary.BigEndian.Uint16(fr.raw[2:]))
+		if len(fr.raw) < 4 {
+			length = 0
+		} else {
+			length = uint64(binary.BigEndian.Uint16(fr.raw[2:]))
+		}
 	case 127:
-		len = binary.BigEndian.Uint64(fr.raw[2:])
+		if len(fr.raw) < 10 {
+			length = 0
+		} else {
+			length = binary.BigEndian.Uint64(fr.raw[2:])
+		}
 	}
-	return len
+	return length
 }
 
 // MaskKey returns mask key if exist.
@@ -351,11 +359,11 @@ func (fr *Frame) setError(status StatusCode) {
 }
 
 func (fr *Frame) mustRead() (n int) {
-	n = int(fr.Len())
-	switch {
-	case n > 65535:
+	n = int(fr.raw[1] & 127)
+	switch n {
+	case 127:
 		n = 8
-	case n > 125:
+	case 126:
 		n = 2
 	default:
 		n = 0
@@ -411,8 +419,8 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 		fr.raw = append(fr.raw[:0], b[0], b[1])
 		br.Discard(2)
 
-		n = fr.mustRead() // TODO: Panic
-		if n > 0 {        // reading length
+		n = fr.mustRead()
+		if n > 0 { // reading length
 			b, err = br.Peek(n)
 			if err == nil {
 				if len(b) < n {
@@ -424,7 +432,7 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 			}
 		}
 		if err == nil {
-			if fr.IsMasked() {
+			if fr.IsMasked() { // reading mask
 				b, err = br.Peek(4)
 				if err == nil {
 					if len(b) < 4 {
@@ -435,7 +443,7 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 					}
 				}
 			}
-			if err == nil {
+			if err == nil { // reading payload
 				b, err = br.Peek(int(fr.Len()))
 				if err == nil {
 					if fr.IsMasked() {
@@ -477,7 +485,7 @@ func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 		}
 
 		m = fr.mustRead()
-		if m > 0 {
+		if m > 0 { // reading length
 			n, err = br.Read(fr.raw[2 : m+2])
 			if n < m {
 				err = errReadingLen
@@ -486,22 +494,22 @@ func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 				n = m
 			}
 		}
-		if fr.IsMasked() && err == nil {
+		if fr.IsMasked() && err == nil { // reading mask
 			m, err = br.Read(fr.raw[n : n+4])
 			if m < 4 {
 				err = errReadingMask
 			} else {
-				copy(fr.mask[:4], fr.raw[n:n+4]) // TODO
+				copy(fr.mask[:4], fr.raw[n:n+4])
 			}
 		}
-		if err == nil {
+		if err == nil { // reading payload
 			fr.payload = fr.payload[:cap(fr.payload)]
 			if n = int(fr.Len()) - (len(fr.payload) - int(nn)); n > 0 {
 				fr.payload = append(fr.payload, make([]byte, n)...)
 			}
 			n, err = br.Read(fr.payload[nn:])
 			if err == nil {
-				if fr.IsMasked() {
+				if fr.IsMasked() { // TODO: Needed?
 					mask(fr.mask, fr.payload[nn:nn+uint64(n)])
 					fr.UnsetMask()
 				}
