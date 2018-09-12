@@ -48,10 +48,6 @@ const (
 type Frame struct {
 	extensionLen int
 
-	rsv1 bool
-	rsv2 bool
-	rsv3 bool
-
 	raw       []byte
 	rawCopy   []byte
 	mask      []byte
@@ -77,7 +73,6 @@ func AcquireFrame() *Frame {
 // ReleaseFrame puts fr Frame into the pool.
 func ReleaseFrame(fr *Frame) {
 	fr.Reset()
-	fr.hardReset()
 	framePool.Put(fr)
 }
 
@@ -94,13 +89,6 @@ func (fr *Frame) resetHeader() {
 	copy(fr.mask, zeroBytes)
 	copy(fr.raw, zeroBytes)
 	copy(fr.rawCopy, zeroBytes)
-}
-
-func (fr *Frame) hardReset() {
-	fr.rsv1 = false
-	fr.rsv2 = false
-	fr.rsv3 = false
-	fr.extensionLen = 0
 }
 
 // Reset resets all Frame values to be reused.
@@ -412,64 +400,54 @@ func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
 	var n int
 	var b []byte
 
-	for {
-		b, err = br.Peek(2)
-		if err != nil {
-			return
-		}
-		fr.raw = append(fr.raw[:0], b[0], b[1])
-		br.Discard(2)
+	b, err = br.Peek(2)
+	if err != nil {
+		return
+	}
+	fr.raw = append(fr.raw[:0], b[0], b[1])
+	br.Discard(2)
 
-		n = fr.mustRead()
-		if n > 0 { // reading length
-			b, err = br.Peek(n)
-			if err == nil {
-				if len(b) < n {
-					err = errReadingLen
-				} else {
-					fr.raw = append(fr.raw, b...)
-					br.Discard(n)
-				}
-			}
-		}
+	n = fr.mustRead()
+	if n > 0 { // reading length
+		b, err = br.Peek(n)
 		if err == nil {
-			if fr.IsMasked() { // reading mask
-				b, err = br.Peek(4)
-				if err == nil {
-					if len(b) < 4 {
-						err = errReadingMask
-					} else {
-						copy(fr.mask[:4], b)
-						br.Discard(4)
-					}
+			if len(b) < n {
+				err = errReadingLen
+			} else {
+				fr.raw = append(fr.raw, b...)
+				br.Discard(n)
+			}
+		}
+	}
+	if err == nil {
+		if fr.IsMasked() { // reading mask
+			b, err = br.Peek(4)
+			if err == nil {
+				if len(b) < 4 {
+					err = errReadingMask
+				} else {
+					copy(fr.mask[:4], b)
+					br.Discard(4)
 				}
 			}
-			if err == nil { // reading payload
-				if fr.extensionLen > 0 {
-					b, err = br.Peek(fr.extensionLen)
-					if err != nil {
-						break
-					}
-					fr.extension = append(fr.extension[:0], b...) // TODO: append to zero?
+		}
+		if err == nil { // reading payload
+			if fr.extensionLen > 0 {
+				b, err = br.Peek(fr.extensionLen)
+				if err == nil {
+					fr.extension = append(fr.extension[:0], b...)
 				}
-
+			}
+			if err == nil {
 				b, err = br.Peek(int(fr.Len()))
 				if err == nil {
-					if fr.IsMasked() {
-						mask(fr.mask[:4], b)
-						fr.UnsetMask()
-					}
-					fr.payload = append(fr.payload[:nn], b...)
 					nn += uint64(len(b))
+					fr.payload = append(fr.payload[:0], b...)
 				}
 			}
 		}
-
-		if !fr.IsContinuation() || err != nil {
-			break
-		}
-		fr.resetHeader()
 	}
+
 	return
 }
 
@@ -483,17 +461,12 @@ var (
 func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 	var n, m int
 
-	for {
-		fr.raw = fr.raw[:maxHeaderSize]
-		n, err = br.Read(fr.raw[:2])
-		if err != nil {
-			break
-		}
-		if n < 2 {
-			err = errReadingHeader
-			break
-		}
-
+	fr.raw = fr.raw[:maxHeaderSize]
+	n, err = br.Read(fr.raw[:2])
+	if err == nil && n < 2 {
+		err = errReadingHeader
+	}
+	if err == nil {
 		m = fr.mustRead()
 		if m > 0 { // reading length
 			n, err = br.Read(fr.raw[2 : m+2])
@@ -519,10 +492,7 @@ func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 					fr.extension = append(fr.extension, make([]byte, n)...)
 				}
 				n, err = br.Read(fr.extension[:fr.extensionLen])
-				if err != nil {
-					break
-				}
-				if fr.extensionLen < n {
+				if err == nil && fr.extensionLen < n {
 					err = errReadingExtension
 				} else {
 					fr.extension = fr.extension[:n]
@@ -535,18 +505,10 @@ func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
 			}
 			n, err = br.Read(fr.payload[nn:])
 			if err == nil {
-				if fr.IsMasked() { // TODO: Needed?
-					mask(fr.mask, fr.payload[nn:nn+uint64(n)])
-					fr.UnsetMask()
-				}
 				nn += uint64(n)
 				fr.payload = fr.payload[:nn]
 			}
 		}
-		if !fr.IsContinuation() || err != nil {
-			break
-		}
-		fr.resetHeader()
 	}
 	return
 }

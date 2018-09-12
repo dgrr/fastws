@@ -36,7 +36,9 @@ const (
 	ModeBinary
 )
 
-var connPool sync.Pool
+var (
+	connPool sync.Pool
+)
 
 // Conn represents websocket connection handler.
 //
