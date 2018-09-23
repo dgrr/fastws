@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type StatusCode uint16
@@ -167,7 +168,7 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	if conn.close {
+	if conn.closed {
 		return 0, io.EOF
 	}
 	atomic.AddInt64(&conn.n, 1)
@@ -195,7 +196,7 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 		var c bool
 
 		for {
-			if conn.check() {
+			if conn.closed {
 				err = io.EOF
 				break
 			}
@@ -314,7 +315,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
 	conn.closed = true
-	for atomic.LoadInt64(conn.n) > 0 {
+	for atomic.LoadInt64(&conn.n) > 0 {
 		time.Sleep(time.Millisecond * 20)
 	}
 
@@ -322,9 +323,7 @@ func (conn *Conn) Close(b string) error {
 	if err == nil {
 		err = conn.c.Close()
 		if err == nil {
-			conn.lck.Lock()
 			conn.c = nil
-			conn.lck.Unlock()
 		}
 	}
 	return err

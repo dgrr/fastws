@@ -1,5 +1,7 @@
 package fastws
 
+import "io"
+
 type bufferWriter struct {
 	wr io.Writer
 	b  []byte
@@ -9,8 +11,8 @@ type bufferWriter struct {
 func (bw *bufferWriter) Write(b []byte) (int, error) {
 	bw.b = append(bw.b[:bw.n], b...)
 	n := len(b)
-	bw.b += n
-	return n
+	bw.n += n
+	return n, nil
 }
 
 func (bw *bufferWriter) Flush() error {
