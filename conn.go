@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 )
 
 type StatusCode uint16
@@ -44,14 +45,14 @@ var (
 //
 // This handler is compatible with io.Reader, io.ReaderFrom, io.Writer, io.WriterTo
 type Conn struct {
-	lck sync.Locker
-
+	n int64
 	c net.Conn
 
 	wpool sync.Pool
 	rpool sync.Pool
 
 	server bool
+	closed bool
 
 	// extra bytes
 	extra []byte
@@ -86,12 +87,14 @@ func (conn *Conn) acquireReader() (br *bufio.Reader) {
 	return br
 }
 
-func (conn *Conn) acquireWriter() (bw *bufio.Writer) {
+func (conn *Conn) acquireWriter() (bw *bufferWriter) {
 	w := conn.wpool.Get()
 	if w == nil {
-		bw = bufio.NewWriter(conn.c)
+		bw = &bufferWriter{
+			wr: conn.c,
+		}
 	} else {
-		bw = w.(*bufio.Writer)
+		bw = w.(*bufferWriter)
 		bw.Reset(conn.c)
 	}
 	return bw
@@ -101,7 +104,7 @@ func (conn *Conn) releaseReader(br *bufio.Reader) {
 	conn.rpool.Put(br)
 }
 
-func (conn *Conn) releaseWriter(bw *bufio.Writer) {
+func (conn *Conn) releaseWriter(bw *bufferWriter) {
 	conn.wpool.Put(bw)
 }
 
@@ -110,9 +113,8 @@ func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
 		conn.Close("")
 	}
-	if conn.lck == nil {
-		conn.lck = &sync.Mutex{}
-	}
+	conn.closed = false
+	conn.n = 0
 	conn.extra = conn.extra[:0]
 	conn.c = c
 }
@@ -165,9 +167,10 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	if conn.checkClose() {
+	if conn.close {
 		return 0, io.EOF
 	}
+	atomic.AddInt64(&conn.n, 1)
 
 	bw := conn.acquireWriter()
 	nn, err := fr.WriteTo(bw)
@@ -175,6 +178,7 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 		err = bw.Flush()
 	}
 	conn.releaseWriter(bw)
+	atomic.AddInt64(&conn.n, -1)
 	return int(nn), err
 }
 
@@ -182,21 +186,33 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	br := conn.acquireReader()
-	var n uint64
-	var c bool
-	for {
-		n, err = fr.ReadFrom(br)
-		nn = int(n)
-		if err == nil {
-			if c, err = conn.checkRequirements(fr); c {
-				continue
+	if conn.closed {
+		err = io.EOF
+	} else {
+		atomic.AddInt64(&conn.n, 1)
+		br := conn.acquireReader()
+		var n uint64
+		var c bool
+
+		for {
+			if conn.check() {
+				err = io.EOF
+				break
 			}
+
+			n, err = fr.ReadFrom(br)
+			nn = int(n)
+			if err == nil {
+				if c, err = conn.checkRequirements(fr); c {
+					continue
+				}
+			}
+			break
 		}
-		break
+		conn.releaseReader(br)
+		atomic.AddInt64(&conn.n, -1)
 	}
-	conn.releaseReader(br)
-	return nn, err
+	return
 }
 
 // NextFrame reads next connection frame and returns if there were no error.
@@ -239,7 +255,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 
 // TODO: Add timeout
 func (conn *Conn) write(mode Mode, b []byte) (int, error) {
-	if conn.checkClose() {
+	if conn.closed {
 		return 0, io.EOF
 	}
 
@@ -262,17 +278,17 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
-	if conn.checkClose() {
+	if conn.closed {
 		return 0, b, io.EOF
 	}
-	var err error
 
+	var err error
 	fr := AcquireFrame()
 	//fr.setRsvFromConn(conn)
 	//fr.setExtensionLength(conn.extensionLength)
 	defer ReleaseFrame(fr)
 
-	for !conn.checkClose() {
+	for {
 		_, err = conn.ReadFrame(fr)
 		if err != nil {
 			break
@@ -297,8 +313,9 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
-	if conn.checkClose() {
-		return nil
+	conn.closed = true
+	for atomic.LoadInt64(conn.n) > 0 {
+		time.Sleep(time.Millisecond * 20)
 	}
 
 	err := conn.SendCodeString(CodeClose, StatusNone, b)
@@ -311,11 +328,4 @@ func (conn *Conn) Close(b string) error {
 		}
 	}
 	return err
-}
-
-func (conn *Conn) checkClose() (closed bool) {
-	conn.lck.Lock()
-	closed = (conn.c == nil)
-	conn.lck.Unlock()
-	return
 }
