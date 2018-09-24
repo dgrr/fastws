@@ -85,35 +85,14 @@ func checkValues(fr *Frame, t *testing.T, c, fin bool, payload []byte) {
 	}
 }
 
-func BenchmarkReadBufio(b *testing.B) {
+func BenchmarkRead(b *testing.B) {
 	var err error
 	var r = bytes.NewBuffer(littlePacket)
 	reader := bufio.NewReader(r)
 
 	fr := AcquireFrame()
 	for i := 0; i < b.N; i++ {
-		_, err = fr.readBufio(reader)
-		if err != nil && err != io.EOF {
-			break
-		}
-		fr.Reset()
-		reader.Reset(r)
-		err = nil
-	}
-	if err != nil {
-		b.Fatal(err)
-	}
-	ReleaseFrame(fr)
-}
-
-func BenchmarkReadStd(b *testing.B) {
-	var err error
-	var r = bytes.NewBuffer(littlePacket)
-	reader := bufio.NewReader(r)
-
-	fr := AcquireFrame()
-	for i := 0; i < b.N; i++ {
-		_, err = fr.readStd(reader)
+		_, err = fr.readFrom(reader)
 		if err != nil && err != io.EOF {
 			break
 		}

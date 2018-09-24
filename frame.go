@@ -1,7 +1,6 @@
 package fastws
 
 import (
-	"bufio"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -387,68 +386,7 @@ var (
 
 // ReadFrom fills fr reading from rd.
 func (fr *Frame) ReadFrom(rd io.Reader) (nn uint64, err error) {
-	switch r := rd.(type) {
-	case *bufio.Reader:
-		nn, err = fr.readBufio(r)
-	default:
-		nn, err = fr.readStd(rd)
-	}
-	return
-}
-
-func (fr *Frame) readBufio(br *bufio.Reader) (nn uint64, err error) {
-	var n int
-	var b []byte
-
-	b, err = br.Peek(2)
-	if err != nil {
-		return
-	}
-	fr.raw = append(fr.raw[:0], b[0], b[1])
-	br.Discard(2)
-
-	n = fr.mustRead()
-	if n > 0 { // reading length
-		b, err = br.Peek(n)
-		if err == nil {
-			if len(b) < n {
-				err = errReadingLen
-			} else {
-				fr.raw = append(fr.raw, b...)
-				br.Discard(n)
-			}
-		}
-	}
-	if err == nil {
-		if fr.IsMasked() { // reading mask
-			b, err = br.Peek(4)
-			if err == nil {
-				if len(b) < 4 {
-					err = errReadingMask
-				} else {
-					copy(fr.mask[:4], b)
-					br.Discard(4)
-				}
-			}
-		}
-		if err == nil { // reading payload
-			if fr.extensionLen > 0 {
-				b, err = br.Peek(fr.extensionLen)
-				if err == nil {
-					fr.extension = append(fr.extension[:0], b...)
-				}
-			}
-			if err == nil {
-				b, err = br.Peek(int(fr.Len()))
-				if err == nil {
-					nn += uint64(len(b))
-					fr.payload = append(fr.payload[:0], b...)
-				}
-			}
-		}
-	}
-
-	return
+	return fr.readFrom(rd)
 }
 
 var (
@@ -458,7 +396,7 @@ var (
 	errReadingExtension = errors.New("error reading extension")
 )
 
-func (fr *Frame) readStd(br io.Reader) (nn uint64, err error) {
+func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 	var n, m int
 
 	fr.raw = fr.raw[:maxHeaderSize]
