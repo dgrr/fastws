@@ -48,6 +48,17 @@ func skipWhiteSpace(b []byte) []byte {
 	return b[i:]
 }
 
+func (ext *extension) build(b []byte) []byte {
+	b = append(b[:0], ext.key...)
+	for _, param := range ext.params {
+		b = append(b, ';', ' ')
+		b = append(b, param.key...)
+		b = append(b, '=')
+		b = append(b, param.value...)
+	}
+	return b
+}
+
 func (ext *extension) parse(b []byte) []byte { // TODO: Make test
 	var i int
 	// extension = key, key; parameters=value
@@ -84,12 +95,16 @@ func (ext *extension) parse(b []byte) []byte { // TODO: Make test
 				break
 			}
 
+			p := paramPool.Get().(*parameter)
+
 			i = bytes.IndexByte(b, '=')
 			if i == -1 {
+				p.key = append(p.key[:0], b...)
+				ext.params = append(ext.params, p)
+				b = b[:0]
 				break
 			}
 
-			p := paramPool.Get().(*parameter)
 			p.key = append(p.key[:0], b[:i]...)
 			if i == len(b) {
 				break
