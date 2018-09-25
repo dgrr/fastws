@@ -49,11 +49,14 @@ type Conn struct {
 	n int64
 	c net.Conn
 
+	exts []*extension // extensions
+
 	wpool sync.Pool
 	rpool sync.Pool
 
-	server bool
-	closed bool
+	server   bool
+	compress bool
+	closed   bool
 
 	// extra bytes
 	extra []byte
@@ -172,6 +175,8 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 		return 0, io.EOF
 	}
 	atomic.AddInt64(&conn.n, 1)
+
+	// TODO: Compress
 
 	bw := conn.acquireWriter()
 	nn, err := fr.WriteTo(bw)

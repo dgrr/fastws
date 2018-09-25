@@ -18,13 +18,16 @@ type RequestHandler func(conn *Conn)
 //
 // Upgrader executes Upgrader.Handler after successful websocket upgrading.
 type Upgrader struct {
-	// Handler is the request Handler for ws connections.
+	// Handler is the request handler for ws connections.
 	Handler RequestHandler
 
 	// Protocols are the supported protocols.
 	Protocols []string
 
-	// TODO: Compress
+	// Origin ...
+	Origin string
+
+	// Compress ...
 	Compress bool
 }
 
@@ -33,9 +36,16 @@ type Upgrader struct {
 // If client does not request any websocket connection this function
 // will execute ctx.NotFound()
 //
-// When connection is successfully stablished this function will call s.Handler.
+// When connection is successfully stablished this function calls s.Handler.
 func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 	if !ctx.IsGet() {
+		ctx.SetStatusCode(fasthttp.StatusBadRequest)
+		return
+	}
+
+	origin := b2s(ctx.Request.Header.Peek("Origin"))
+	if upgr.Origin != "" && upgr.Origin != origin {
+		ctx.SetStatusCode(fasthttp.StatusForbidden)
 		return
 	}
 
@@ -59,6 +69,8 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				ctx.Error("Not supported version", fasthttp.StatusBadRequest)
 				return
 			}
+			exts := parseExtensions(ctx)
+			compress := mustCompress(exts)
 
 			ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
 			ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
@@ -72,8 +84,13 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 
 			ctx.Hijack(func(c net.Conn) {
 				conn := acquireConn(c)
+				conn.exts = append(conn.exts[:0], exts...)
+				// release extensions
+				releaseExtensions(exts)
+				exts = nil
 				// stablishing default options
 				conn.server = true
+				conn.compress = compress
 				// executing handler
 				upgr.Handler(conn)
 				// closes and release the connection
@@ -117,4 +134,15 @@ func selectProtocol(protos [][]byte, accepted []string) string {
 		}
 	}
 	return string(protos[0])
+}
+
+func mustCompress(exts []*extension) bool {
+	c := false
+	for _, ext := range exts {
+		if bytes.Equal(ext.key, permessageDeflate) {
+			c = true
+			break
+		}
+	}
+	return c
 }
