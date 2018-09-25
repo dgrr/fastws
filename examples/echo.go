@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/dgrr/fastws"
@@ -15,20 +16,18 @@ func main() {
 	router.GET("/", rootHandler)
 	router.GET("/ws", fastws.Upgrade(wsHandler))
 
-	fasthttp.ListenAndServe(":8080", router.Handler)
-}
+	go fasthttp.ListenAndServe(":8080", router.Handler)
 
-func wsHandler(conn *fastws.Conn) {
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt)
-
-	go handleConn(conn)
 	<-sigCh
 	signal.Stop(sigCh)
 	signal.Reset(os.Interrupt)
 }
 
-func handleConn(conn *fastws.Conn) {
+func wsHandler(conn *fastws.Conn) {
+	fmt.Printf("Opened connection\n")
+
 	fr := fastws.AcquireFrame()
 	defer fastws.ReleaseFrame(fr)
 
@@ -37,15 +36,19 @@ func handleConn(conn *fastws.Conn) {
 	for {
 		_, err := conn.ReadFrame(fr)
 		if err != nil {
+			fmt.Println(err)
 			break
 		}
 		if fr.IsMasked() {
 			fr.Unmask()    // unmask/decode payload content
 			fr.UnsetMask() // delete mask bit to be sended from the server
 		}
+		time.Sleep(time.Second)
 		conn.WriteFrame(fr)
 		fr.Reset()
 	}
+
+	fmt.Printf("Closed connection\n")
 }
 
 func rootHandler(ctx *fasthttp.RequestCtx) {
@@ -63,6 +66,7 @@ func rootHandler(ctx *fasthttp.RequestCtx) {
       ws.onmessage = function(e) {
 				var d = document.createElement("div");
         d.innerHTML = e.data;
+				ws.send(e.data);
         document.getElementById("text").appendChild(d);
       }
 			ws.onclose = function(e){
