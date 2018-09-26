@@ -12,6 +12,14 @@ type extension struct {
 	params []*parameter
 }
 
+func (ext *extension) Reset() {
+	ext.key = ext.key[:0]
+	for i := range ext.params {
+		paramPool.Put(ext.params[i])
+	}
+	ext.params = ext.params[:0]
+}
+
 var extPool = sync.Pool{
 	New: func() interface{} {
 		return &extension{}
@@ -20,9 +28,7 @@ var extPool = sync.Pool{
 
 func releaseExtensions(exts []*extension) {
 	for _, ext := range exts {
-		for i := range ext.params {
-			paramPool.Put(ext.params[i])
-		}
+		ext.Reset()
 		extPool.Put(ext)
 	}
 }
@@ -38,7 +44,7 @@ var paramPool = sync.Pool{
 	},
 }
 
-func skipWhiteSpace(b []byte) []byte {
+func skipWhiteSpaces(b []byte) []byte {
 	i := 0
 	for i = range b {
 		if b[i] != ' ' {
@@ -61,78 +67,94 @@ func (ext *extension) build(b []byte) []byte {
 
 func (ext *extension) parse(b []byte) []byte { // TODO: Make test
 	var i int
+	var c byte
+	var cc byte // last char
+	var prtr *parameter
 	// extension = key, key; parameters=value
+	ext.Reset()
+floop:
 	for {
-		b = skipWhiteSpace(b)
+		c, i, b = nextChar(b)
 		if len(b) == 0 {
 			break
 		}
 
-		i = bytes.IndexByte(b, ',')
-		if i > 0 {
+		switch c {
+		case ',':
+			if len(ext.key) > 0 { // another extension
+				break floop
+			}
 			ext.key = append(ext.key[:0], b[:i]...)
 			b = b[i+1:]
-			break
+			break floop
+		case ';':
+			if len(ext.key) == 0 {
+				ext.key = append(ext.key[:0], b[:i]...)
+			} else if cc == '=' {
+				if prtr != nil {
+					ext.appendValue(prtr, b[:i])
+					prtr = nil
+				}
+			} else {
+				ext.appendKey(b[:i])
+			}
+		case '=':
+			if len(ext.key) > 0 {
+				prtr = paramPool.Get().(*parameter)
+				prtr.key = append(prtr.key[:0], b[:i]...)
+			}
+		default:
+			if len(ext.key) == 0 {
+				ext.key = append(ext.key[:0], b...)
+			} else if prtr != nil {
+				ext.appendValue(prtr, b)
+				prtr = nil
+			} else {
+				ext.appendKey(b)
+			}
+			i = len(b)
 		}
-
-		i = bytes.IndexByte(b, ';')
-		if i == -1 {
-			ext.key = append(ext.key[:0], b...)
-			b = b[:0]
-			break
-		}
-		ext.key = append(ext.key[:0], b[:i]...)
 		if i == len(b) {
 			b = b[:0]
-			break
+			break floop
 		}
-		b = b[i+1:]
-		ext.params = ext.params[:0]
-
-		for {
-			b = skipWhiteSpace(b)
-			if len(b) == 0 {
-				break
-			}
-
-			p := paramPool.Get().(*parameter)
-
-			i = bytes.IndexByte(b, '=')
-			if i == -1 {
-				p.key = append(p.key[:0], b...)
-				ext.params = append(ext.params, p)
-				b = b[:0]
-				break
-			}
-
-			p.key = append(p.key[:0], b[:i]...)
-			if i == len(b) {
-				break
-			}
-
-			b = b[i+1:]
-			i = bytes.IndexByte(b, ';')
-			if i == -1 {
-				i = len(b)
-			}
-
-			p.value = append(p.value[:0], b[:i]...)
-			ext.params = append(ext.params, p)
-			if i == len(b) {
-				b = b[:0]
-				break
-			}
-
-			b = b[i+1:]
-		}
+		b, cc = b[i+1:], c
 	}
 	return b
+}
+
+func (ext *extension) appendKey(key []byte) {
+	p := paramPool.Get().(*parameter)
+	p.key = append(p.key[:0], key...)
+	ext.params = append(ext.params, p)
+}
+
+func (ext *extension) appendValue(prtr *parameter, value []byte) {
+	prtr.value = append(prtr.value[:0], value...)
+	ext.params = append(ext.params, prtr)
+}
+
+var chars = []byte{';', ',', '='}
+
+func nextChar(b []byte) (byte, int, []byte) {
+	var c byte
+	var nn, i int
+	b = skipWhiteSpaces(b)
+	if len(b) > 0 {
+		for n := 0; n < len(chars); n++ {
+			nn = bytes.IndexByte(b, chars[n])
+			if nn != -1 && (nn < i || i == 0) {
+				c, i = chars[n], nn
+			}
+		}
+	}
+	return c, i, b
 }
 
 func parseExtensions(ctx *fasthttp.RequestCtx) []*extension {
 	var exts []*extension
 	ctx.Request.Header.VisitAll(func(k, v []byte) {
-		if bytes.Equal(k, wsHeaderExtensions) {
+		if equalFold(k, wsHeaderExtensions) {
 			for len(v) > 0 {
 				ext := extPool.Get().(*extension)
 				v = ext.parse(v)
