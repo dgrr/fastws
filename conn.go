@@ -3,7 +3,6 @@ package fastws
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -176,7 +175,7 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	if conn.closed {
-		return 0, io.EOF
+		return 0, EOF
 	}
 	atomic.AddInt64(&conn.n, 1)
 
@@ -197,14 +196,14 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	if conn.closed {
-		err = io.EOF
+		err = EOF
 	} else {
 		atomic.AddInt64(&conn.n, 1)
 		br := conn.acquireReader()
 		var n uint64
 
 		if conn.closed {
-			err = io.EOF
+			err = EOF
 		} else {
 			n, err = fr.ReadFrom(br)
 			nn = int(n)
@@ -252,7 +251,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 // TODO: Add timeout
 func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	if conn.closed {
-		return 0, io.EOF
+		return 0, EOF
 	}
 
 	fr := AcquireFrame()
@@ -275,7 +274,7 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	if conn.closed {
-		return 0, b, io.EOF
+		return 0, b, EOF
 	}
 
 	var c bool

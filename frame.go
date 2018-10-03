@@ -383,7 +383,7 @@ func (fr *Frame) appendByLen() (err error) {
 }
 
 var (
-	EOF                = errors.New("Closed connection")
+	EOF                = io.EOF
 	errMalformedHeader = errors.New("Malformed header")
 	errBadHeaderSize   = errors.New("Header size is insufficient")
 )
