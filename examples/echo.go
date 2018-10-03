@@ -34,18 +34,18 @@ func wsHandler(conn *fastws.Conn) {
 	conn.WriteString("Hello")
 
 	for {
-		_, err := conn.ReadFrame(fr)
+		_, msg, err := conn.ReadMessage(nil)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Fprintf(os.Stderr, "error reading message: %s\n", err)
 			break
 		}
-		if fr.IsMasked() {
-			fr.Unmask()    // unmask/decode payload content
-			fr.UnsetMask() // delete mask bit to be sended from the server
-		}
 		time.Sleep(time.Second)
-		conn.WriteFrame(fr)
-		fr.Reset()
+
+		_, err = conn.Write(msg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error writing message: %s\n", err)
+			break
+		}
 	}
 
 	fmt.Printf("Closed connection\n")

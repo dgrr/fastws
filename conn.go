@@ -279,8 +279,6 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	var c bool
 	var err error
 	fr := AcquireFrame()
-	//fr.setRsvFromConn(conn)
-	//fr.setExtensionLength(conn.extensionLength)
 	defer ReleaseFrame(fr)
 
 	for {
@@ -296,6 +294,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 
 		if conn.server && fr.IsMasked() {
 			fr.Unmask()
+			fr.UnsetMask()
 		}
 
 		b = append(b, fr.payload...)
