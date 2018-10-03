@@ -15,16 +15,16 @@ type StatusCode uint16
 // TODO: doc for status
 
 const (
-	StatusNone              = 1000
-	StatusGoAway            = 1001
-	StatusProtocolError     = 1002
-	StatusNotAcceptable     = 1003
-	StatusReserved          = 1004
-	StatusNotConsistent     = 1007
-	StatusViolation         = 1008
-	StatusTooBig            = 1009
-	StatuseExtensionsNeeded = 1010
-	StatusUnexpected        = 1011
+	StatusNone              StatusCode = 1000
+	StatusGoAway                       = 1001
+	StatusProtocolError                = 1002
+	StatusNotAcceptable                = 1003
+	StatusReserved                     = 1004
+	StatusNotConsistent                = 1007
+	StatusViolation                    = 1008
+	StatusTooBig                       = 1009
+	StatuseExtensionsNeeded            = 1010
+	StatusUnexpected                   = 1011
 )
 
 // Mode is the mode in which the bytes are sended.
@@ -196,22 +196,12 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 		atomic.AddInt64(&conn.n, 1)
 		br := conn.acquireReader()
 		var n uint64
-		var c bool
 
-		for {
-			if conn.closed {
-				err = io.EOF
-				break
-			}
-
+		if conn.closed {
+			err = io.EOF
+		} else {
 			n, err = fr.ReadFrom(br)
 			nn = int(n)
-			if err == nil {
-				if c, err = conn.checkRequirements(fr); c {
-					continue
-				}
-			}
-			break
 		}
 		conn.releaseReader(br)
 		atomic.AddInt64(&conn.n, -1)
@@ -286,6 +276,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		return 0, b, io.EOF
 	}
 
+	var c bool
 	var err error
 	fr := AcquireFrame()
 	//fr.setRsvFromConn(conn)
@@ -297,6 +288,12 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		if err != nil {
 			break
 		}
+		if err == nil {
+			if c, err = conn.checkRequirements(fr); c {
+				continue
+			}
+		}
+
 		if conn.server && fr.IsMasked() {
 			fr.Unmask()
 		}
