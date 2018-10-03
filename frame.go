@@ -3,12 +3,14 @@ package fastws
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 )
 
 const (
-	maxHeaderSize = 14
+	maxHeaderSize  = 14
+	maxPayloadSize = uint64(4096)
 )
 
 // Code to send.
@@ -45,6 +47,7 @@ const (
 // Frame could not be used during message exchanging.
 // This type can be used if you want low level access to websocket.
 type Frame struct {
+	max     uint64
 	raw     []byte
 	rawCopy []byte
 	mask    []byte
@@ -54,9 +57,11 @@ type Frame struct {
 var framePool = sync.Pool{
 	New: func() interface{} {
 		return &Frame{
+			max:     maxPayloadSize,
 			mask:    make([]byte, 4),
 			raw:     make([]byte, maxHeaderSize),
 			rawCopy: make([]byte, maxHeaderSize),
+			payload: make([]byte, maxPayloadSize),
 		}
 	},
 }
@@ -181,6 +186,16 @@ func (fr *Frame) MaskKey() []byte {
 // Payload returns Frame payload.
 func (fr *Frame) Payload() []byte {
 	return fr.payload
+}
+
+// PayloadSize returns max payload size.
+func (fr *Frame) PayloadSize() uint64 {
+	return fr.max
+}
+
+// SetPayloadSize sets max payload size.
+func (fr *Frame) SetPayloadSize(size uint64) {
+	fr.max = size
 }
 
 // SetFin sets FIN bit.
@@ -412,14 +427,15 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 			}
 		}
 		if err == nil { // reading payload
-			fr.payload = fr.payload[:cap(fr.payload)]
-			if n = int(fr.Len()) - (len(fr.payload) - int(nn)); n > 0 {
-				fr.payload = append(fr.payload, make([]byte, n)...)
-			}
-			n, err = br.Read(fr.payload[nn:])
+			fr.payload = fr.payload[:fr.max]
+
+			n, err = br.Read(fr.payload)
 			if err == nil {
-				nn += uint64(n)
+				nn = uint64(n)
 				fr.payload = fr.payload[:nn]
+			}
+			if fr.Len() > fr.max {
+				err = fmt.Errorf("Max payload size %d <> %d expected", fr.Len(), fr.max)
 			}
 		}
 	}

@@ -61,6 +61,11 @@ type Conn struct {
 
 	// Mode indicates Write default mode.
 	Mode Mode
+
+	// MaxPayloadSize prevents huge memory allocation.
+	//
+	// By default MaxPayloadSize is 4096.
+	MaxPayloadSize uint64
 }
 
 func acquireConn(c net.Conn) (conn *Conn) {
@@ -117,6 +122,7 @@ func (conn *Conn) Reset(c net.Conn) {
 	}
 	conn.closed = false
 	conn.n = 0
+	conn.MaxPayloadSize = maxPayloadSize
 	conn.extra = conn.extra[:0]
 	conn.c = c
 }
