@@ -49,8 +49,6 @@ type Conn struct {
 	n int64
 	c net.Conn
 
-	exts []*extension // extensions
-
 	wpool sync.Pool
 	rpool sync.Pool
 

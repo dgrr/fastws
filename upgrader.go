@@ -69,8 +69,8 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				ctx.Error("Not supported version", fasthttp.StatusBadRequest)
 				return
 			}
-			exts := parseExtensions(ctx)
-			compress := mustCompress(exts)
+			//compress := mustCompress(exts)
+			compress := false
 
 			ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
 			ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
@@ -84,10 +84,6 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 
 			ctx.Hijack(func(c net.Conn) {
 				conn := acquireConn(c)
-				conn.exts = append(conn.exts[:0], exts...)
-				// release extensions
-				releaseExtensions(exts)
-				exts = nil
 				// stablishing default options
 				conn.server = true
 				conn.compress = compress
@@ -134,15 +130,4 @@ func selectProtocol(protos [][]byte, accepted []string) string {
 		}
 	}
 	return string(protos[0])
-}
-
-func mustCompress(exts []*extension) bool {
-	c := false
-	for _, ext := range exts {
-		if bytes.Equal(ext.key, permessageDeflate) {
-			c = true
-			break
-		}
-	}
-	return c
 }

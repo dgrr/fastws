@@ -45,13 +45,10 @@ const (
 // Frame could not be used during message exchanging.
 // This type can be used if you want low level access to websocket.
 type Frame struct {
-	extensionLen int
-
-	raw       []byte
-	rawCopy   []byte
-	mask      []byte
-	payload   []byte
-	extension []byte
+	raw     []byte
+	rawCopy []byte
+	mask    []byte
+	payload []byte
 }
 
 var framePool = sync.Pool{
@@ -77,11 +74,9 @@ func ReleaseFrame(fr *Frame) {
 
 func (fr *Frame) resetPayload() {
 	fr.payload = fr.payload[:0]
-	fr.extension = fr.extension[:0]
 }
 
 func (fr *Frame) resetHeader() {
-	fr.extensionLen = 0
 	fr.mask = fr.mask[:4]
 	fr.raw = fr.raw[:maxHeaderSize]
 	fr.rawCopy = fr.rawCopy[:maxHeaderSize]
@@ -288,12 +283,6 @@ func (fr *Frame) setLength(n int) {
 	fr.raw[1] |= uint8(n)
 }
 
-// SetExtensionLength sets the extension length.
-func (fr *Frame) SetExtensionLength(n int) {
-	// TODO: Support extensions
-	fr.extensionLen = n
-}
-
 // Mask masks Frame payload.
 func (fr *Frame) Mask() {
 	fr.raw[1] |= maskBit
@@ -390,10 +379,9 @@ func (fr *Frame) ReadFrom(rd io.Reader) (nn uint64, err error) {
 }
 
 var (
-	errReadingHeader    = errors.New("error reading frame header")
-	errReadingLen       = errors.New("error reading payload length")
-	errReadingMask      = errors.New("error reading mask")
-	errReadingExtension = errors.New("error reading extension")
+	errReadingHeader = errors.New("error reading frame header")
+	errReadingLen    = errors.New("error reading payload length")
+	errReadingMask   = errors.New("error reading mask")
 )
 
 func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
@@ -424,19 +412,6 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 			}
 		}
 		if err == nil { // reading payload
-			if fr.extensionLen > 0 {
-				fr.extension = fr.extension[:cap(fr.extension)]
-				if n = len(fr.extension) - fr.extensionLen; n > 0 {
-					fr.extension = append(fr.extension, make([]byte, n)...)
-				}
-				n, err = br.Read(fr.extension[:fr.extensionLen])
-				if err == nil && fr.extensionLen < n {
-					err = errReadingExtension
-				} else {
-					fr.extension = fr.extension[:n]
-				}
-			}
-
 			fr.payload = fr.payload[:cap(fr.payload)]
 			if n = int(fr.Len()) - (len(fr.payload) - int(nn)); n > 0 {
 				fr.payload = append(fr.payload, make([]byte, n)...)
