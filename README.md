@@ -7,7 +7,7 @@ See [examples](https://github.com/dgrr/fastws/blob/master/examples) to see how t
 # Why another websocket package?
 
 Other websocket packages does not allow concurrent Read/Write operations
-and a does not provide low level access to websocket packet crafting.
+and does not provide low level access to websocket packet crafting.
 
 Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
