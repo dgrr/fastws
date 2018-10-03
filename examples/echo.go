@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"time"
@@ -39,7 +38,7 @@ func wsHandler(conn *fastws.Conn) {
 	for {
 		_, msg, err = conn.ReadMessage(msg[:0])
 		if err != nil {
-			if err != io.EOF {
+			if err != fastws.EOF {
 				fmt.Fprintf(os.Stderr, "error reading message: %s\n", err)
 			}
 			break

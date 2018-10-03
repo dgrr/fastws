@@ -244,11 +244,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 		fr.Reset()
 		c = true
 	case fr.IsClose():
-		if fr.Len() > 0 {
-			err = fmt.Errorf("%s: %s", EOF, fr.Payload())
-		} else {
-			err = EOF
-		}
+		err = EOF
 	}
 	return
 }
