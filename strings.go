@@ -1,10 +1,12 @@
 package fastws
 
 var (
+	wsString            = []byte("ws")
+	wssString           = []byte("wss")
 	originString        = []byte("Origin")
 	connectionString    = []byte("Connection")
 	upgradeString       = []byte("Upgrade")
-	wsString            = []byte("websocket")
+	websocketString     = []byte("websocket")
 	commaString         = []byte(",")
 	wsHeaderVersion     = []byte("Sec-WebSocket-Version")
 	wsHeaderKey         = []byte("Sec-WebSocket-Key")

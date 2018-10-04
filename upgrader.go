@@ -49,10 +49,12 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	ctx.Response.Header.DisableNormalizing()
+
 	hconn := ctx.Request.Header.PeekBytes(connectionString)
 	if bytes.Equal(hconn, upgradeString) {
 		hup := ctx.Request.Header.PeekBytes(upgradeString)
-		if bytes.Equal(hup, wsString) {
+		if bytes.Equal(hup, websocketString) {
 			hversion := ctx.Request.Header.PeekBytes(wsHeaderVersion)
 			hkey := ctx.Request.Header.PeekBytes(wsHeaderKey)
 			hprotos := bytes.Split(
@@ -74,7 +76,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 
 			ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
 			ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
-			ctx.Response.Header.AddBytesKV(upgradeString, wsString)
+			ctx.Response.Header.AddBytesKV(upgradeString, websocketString)
 			ctx.Response.Header.AddBytesK(wsHeaderAccept, makeKey(hkey, hkey))
 			// TODO: implement bad websocket version
 			// https://tools.ietf.org/html/rfc6455#section-4.4
