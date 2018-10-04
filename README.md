@@ -13,7 +13,7 @@ Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
 in production allowing low level access to the websocket frames.
 
-# How it works?
+# How it works? (Server)
 
 Okay. It's easy. You have an
 [Upgrader](https://godoc.org/github.com/dgrr/fastws#Upgrader)
@@ -72,6 +72,18 @@ func wsHandler(conn *Conn) {
 ```
 
 All of this functions are safe-concurrent. Ready to be used from different goroutines.
+
+# How it works? (Client)
+
+Just call [Dial](https://godoc.org/github.com/dgrr/fastws#Dial).
+
+```go
+conn, err := fastws.Dial("ws://localhost:8080/ws")
+if err != nil {
+  fmt.Println(err)
+}
+conn.WriteString("Hello")
+```
 
 # Comparision.
 
