@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/dgrr/fastws"
-	"github.com/gorilla/websocket"
+	"github.com/valyala/fasthttp"
 )
 
 func main() {
@@ -31,33 +30,25 @@ func main() {
 	conn.Close("Bye")
 }
 
-var upgrader = websocket.Upgrader{} // use default options
+func echo(c *fastws.Conn) {
+	defer c.Close("Bye")
 
-func echo(w http.ResponseWriter, r *http.Request) {
-	c, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		fmt.Println("upgrade:", err)
-		return
-	}
-	defer c.Close()
-
+	var msg []byte
+	var err error
 	for {
-		mt, message, err := c.ReadMessage()
+		_, msg, err = c.ReadMessage(msg)
 		if err != nil {
-			fmt.Println("read:", err)
 			break
 		}
-		fmt.Printf("Server: %s\n", message)
+		fmt.Printf("Server: %s\n", msg)
 
-		err = c.WriteMessage(mt, message)
+		_, err = c.Write(msg)
 		if err != nil {
-			fmt.Println("write:", err)
 			break
 		}
 	}
 }
 
 func startServer(addr string) {
-	http.HandleFunc("/echo", echo)
-	http.ListenAndServe(addr, nil)
+	fasthttp.ListenAndServe(addr, fastws.Upgrade(echo))
 }
