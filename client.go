@@ -29,10 +29,10 @@ func Dial(url string) (conn *Conn, err error) {
 	uri.Update(url)
 
 	scheme := "https"
-	port := ":443"
+	port := "443"
 	if bytes.Equal(uri.Scheme(), wsString) {
 		scheme = "http"
-		port = ":80"
+		port = "80"
 	}
 	uri.SetScheme(scheme)
 
