@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/valyala/fasthttp"
@@ -11,7 +12,7 @@ import (
 )
 
 var (
-	ErrCannotUpgrade = errors.New("cannot upgrade connection status != 101")
+	ErrCannotUpgrade = errors.New("cannot upgrade connection")
 )
 
 // Dial performs establishes websocket connection as client.
@@ -28,8 +29,10 @@ func Dial(url string) (conn *Conn, err error) {
 	uri.Update(url)
 
 	scheme := "https"
+	port := ":443"
 	if bytes.Equal(uri.Scheme(), wsString) {
 		scheme = "http"
+		port = ":80"
 	}
 	uri.SetScheme(scheme)
 
@@ -42,7 +45,7 @@ func Dial(url string) (conn *Conn, err error) {
 	req.SetRequestURIBytes(uri.FullURI())
 
 	var c net.Conn
-	c, err = net.Dial("tcp4", b2s(uri.Host()))
+	c, err = net.Dial("tcp4", fmt.Sprintf("%s:%s", uri.Host(), port))
 	if err == nil {
 		bw := bufio.NewWriter(c)
 		br := bufio.NewReader(c)
@@ -64,6 +67,7 @@ func Dial(url string) (conn *Conn, err error) {
 
 var randLetters = []byte("qwtuiopasdgjklzxcbnmWQETUIOASDFGHJKXCVBNM")
 
+// TODO: avoid extra allocations
 func makeRandKey(b []byte) []byte {
 	b = b[:0]
 	n := uint32(len(randLetters))

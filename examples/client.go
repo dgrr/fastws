@@ -19,7 +19,7 @@ func main() {
 
 	var msg []byte
 	for i := 0; i < 5; i++ {
-		_, msg, err = conn.ReadMessage(msg)
+		_, msg, err = conn.ReadMessage(msg[:0])
 		if err != nil {
 			break
 		}

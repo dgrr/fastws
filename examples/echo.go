@@ -28,9 +28,6 @@ func main() {
 func wsHandler(conn *fastws.Conn) {
 	fmt.Printf("Opened connection\n")
 
-	fr := fastws.AcquireFrame()
-	defer fastws.ReleaseFrame(fr)
-
 	conn.WriteString("Hello")
 
 	var msg []byte
