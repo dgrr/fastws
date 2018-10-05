@@ -63,7 +63,7 @@ func Dial(url string) (conn *Conn, err error) {
 		res.Read(br)
 
 		if res.StatusCode() != 101 ||
-			bytes.Equal(res.Header.PeekBytes(upgradeString), websocketString) {
+			!bytes.Equal(res.Header.PeekBytes(upgradeString), websocketString) {
 			c.Close()
 			err = ErrCannotUpgrade
 		} else {
