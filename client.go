@@ -3,6 +3,7 @@ package fastws
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -45,7 +46,15 @@ func Dial(url string) (conn *Conn, err error) {
 	req.SetRequestURIBytes(uri.FullURI())
 
 	var c net.Conn
-	c, err = net.Dial("tcp4", fmt.Sprintf("%s:%s", uri.Host(), port))
+	addr := fmt.Sprintf("%s:%s", uri.Host(), port)
+	if scheme == "http" {
+		c, err = net.Dial("tcp4", addr)
+	} else {
+		c, err = tls.Dial("tcp4", addr, &tls.Config{
+			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS11,
+		})
+	}
 	if err == nil {
 		bw := bufio.NewWriter(c)
 		br := bufio.NewReader(c)
@@ -53,7 +62,7 @@ func Dial(url string) (conn *Conn, err error) {
 		bw.Flush()
 		res.Read(br)
 
-		if res.StatusCode() != 101 &&
+		if res.StatusCode() != 101 ||
 			bytes.Equal(res.Header.PeekBytes(upgradeString), websocketString) {
 			c.Close()
 			err = ErrCannotUpgrade
