@@ -3,68 +3,54 @@ package fastws
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net"
 
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fastrand"
 )
 
 var (
 	ErrCannotUpgrade = errors.New("cannot upgrade connection")
 )
 
-// Dial performs establishes websocket connection as client.
+// Client returns Conn using existing connection.
 //
-// url parameter must follow WebSocket url format i.e. ws://host:port/path
-func Dial(url string) (conn *Conn, err error) {
-	uri := fasthttp.AcquireURI()
+// uri must be complete uri i.e. http://localhost:8080/ws
+func Client(c net.Conn, url string) (conn *Conn, err error) {
 	req := fasthttp.AcquireRequest()
 	res := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseURI(uri)
+	uri := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(res)
+	defer fasthttp.ReleaseURI(uri)
 
 	uri.Update(url)
 
-	scheme := "https"
-	port := "443"
-	if bytes.Equal(uri.Scheme(), wsString) {
-		scheme = "http"
-		port = "80"
-	}
-	uri.SetScheme(scheme)
+	origin := bytePool.Get().([]byte)
+	defer bytePool.Put(origin)
+
+	origin = prepareOrigin(origin, uri)
 
 	req.Header.SetMethod("GET")
+	req.Header.AddBytesKV(originString, origin)
 	req.Header.AddBytesKV(connectionString, upgradeString)
 	req.Header.AddBytesKV(upgradeString, websocketString)
 	req.Header.AddBytesKV(wsHeaderVersion, supportedVersions[0])
 	req.Header.AddBytesKV(wsHeaderKey, makeRandKey(nil))
 	// TODO: Add compression
+
 	req.SetRequestURIBytes(uri.FullURI())
 
-	var c net.Conn
-	addr := fmt.Sprintf("%s:%s", uri.Host(), port)
-	if scheme == "http" {
-		c, err = net.Dial("tcp4", addr)
-	} else {
-		c, err = tls.Dial("tcp4", addr, &tls.Config{
-			InsecureSkipVerify: false,
-			MinVersion:         tls.VersionTLS11,
-		})
-	}
+	br := bufio.NewReader(c)
+	bw := bufio.NewWriter(c)
+	req.Write(bw)
+	bw.Flush()
+	err = res.Read(br)
 	if err == nil {
-		bw := bufio.NewWriter(c)
-		br := bufio.NewReader(c)
-		req.Write(bw)
-		bw.Flush()
-		res.Read(br)
-
 		if res.StatusCode() != 101 ||
 			!bytes.Equal(res.Header.PeekBytes(upgradeString), websocketString) {
-			c.Close()
 			err = ErrCannotUpgrade
 		} else {
 			conn = acquireConn(c)
@@ -74,14 +60,49 @@ func Dial(url string) (conn *Conn, err error) {
 	return conn, err
 }
 
-var randLetters = []byte("qwtuiopasdgjklzxcbnmWQETUIOASDFGHJKXCVBNM")
+// Dial performs establishes websocket connection as client.
+//
+// url parameter must follow WebSocket url format i.e. ws://host:port/path
+func Dial(url string) (conn *Conn, err error) {
+	uri := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(uri)
+	uri.Update(url)
 
-// TODO: avoid extra allocations
-func makeRandKey(b []byte) []byte {
-	b = b[:0]
-	n := uint32(len(randLetters))
-	for i := 0; i < 16; i++ {
-		b = append(b, randLetters[fastrand.Uint32n(n)])
+	scheme := "https"
+	port := ":443"
+	if bytes.Equal(uri.Scheme(), wsString) {
+		scheme, port = "http", ":80"
 	}
-	return s2b(base64.EncodeToString(b))
+	uri.SetScheme(scheme)
+
+	addr := bytePool.Get().([]byte)
+	addr = append(addr[:0], uri.Host()...)
+	if n := bytes.LastIndexByte(addr, ':'); n == -1 {
+		addr = append(addr, port...)
+	}
+
+	var c net.Conn
+
+	if scheme == "http" {
+		c, err = net.Dial("tcp", b2s(addr))
+	} else {
+		c, err = tls.Dial("tcp", b2s(addr), &tls.Config{
+			InsecureSkipVerify: false,
+			MinVersion:         tls.VersionTLS11,
+		})
+	}
+	if err == nil {
+		conn, err = Client(c, uri.String())
+		if err != nil {
+			c.Close()
+		}
+	}
+	return conn, err
+}
+
+func makeRandKey(b []byte) []byte {
+	b = extendByteSlice(b, 16)
+	rand.Read(b[:16])
+	b = appendEncode(base64, b[:0], b[:16])
+	return b
 }

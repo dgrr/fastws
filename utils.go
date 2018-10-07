@@ -30,7 +30,7 @@ func s2b(s string) []byte {
 	return *(*[]byte)(unsafe.Pointer(&bh))
 }
 
-func equalFold(b, s []byte) (equals bool) { // TODO: To asm
+func equalFold(b, s []byte) (equals bool) {
 	n := len(b)
 	if n != len(s) {
 		equals = false

@@ -31,6 +31,12 @@ type Upgrader struct {
 	Compress bool
 }
 
+func prepareOrigin(b []byte, uri *fasthttp.URI) []byte {
+	b = append(b[:0], uri.Scheme()...)
+	b = append(b, "://"...)
+	return append(b, uri.Host()...)
+}
+
 // Upgrader upgrades HTTP to websocket connection if possible.
 //
 // If client does not request any websocket connection this function
@@ -43,10 +49,21 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	origin := b2s(ctx.Request.Header.Peek("Origin"))
-	if upgr.Origin != "" && upgr.Origin != origin {
-		ctx.SetStatusCode(fasthttp.StatusForbidden)
-		return
+	origin := ctx.Request.Header.Peek("Origin")
+	if upgr.Origin != "" {
+		uri := fasthttp.AcquireURI()
+		uri.Update(upgr.Origin)
+
+		b := bytePool.Get().([]byte)
+		b = prepareOrigin(b, uri)
+		fasthttp.ReleaseURI(uri)
+
+		if !equalFold(b, origin) {
+			ctx.SetStatusCode(fasthttp.StatusForbidden)
+			bytePool.Put(b)
+			return
+		}
+		bytePool.Put(b)
 	}
 
 	ctx.Response.Header.DisableNormalizing()
@@ -77,7 +94,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
 			ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
 			ctx.Response.Header.AddBytesKV(upgradeString, websocketString)
-			ctx.Response.Header.AddBytesK(wsHeaderAccept, makeKey(hkey, hkey))
+			ctx.Response.Header.AddBytesKV(wsHeaderAccept, makeKey(hkey, hkey))
 			// TODO: implement bad websocket version
 			// https://tools.ietf.org/html/rfc6455#section-4.4
 			if proto := selectProtocol(hprotos, upgr.Protocols); proto != "" {
@@ -107,7 +124,7 @@ var shaPool = sync.Pool{
 
 var base64 = b64.StdEncoding
 
-func makeKey(dst, key []byte) string {
+func makeKey(dst, key []byte) []byte {
 	h := shaPool.Get().(hash.Hash)
 	h.Reset()
 	defer shaPool.Put(h)
@@ -115,8 +132,25 @@ func makeKey(dst, key []byte) string {
 	h.Write(key)
 	h.Write(uidKey)
 	dst = h.Sum(dst[:0])
-	// TODO: Avoid extra allocations
-	return base64.EncodeToString(dst)
+	dst = appendEncode(base64, dst[:0], dst)
+	return dst
+}
+
+// Thank you @valyala
+//
+// https://go-review.googlesource.com/c/go/+/37639
+func appendEncode(enc *b64.Encoding, dst, src []byte) []byte {
+	needLen := enc.EncodedLen(len(src)) + len(dst)
+	b := extendByteSlice(dst, needLen)
+	enc.Encode(b[len(dst):], src)
+	return b
+}
+
+func appendDecode(enc *b64.Encoding, dst, src []byte) ([]byte, error) {
+	needLen := enc.DecodedLen(len(src)) + len(dst)
+	b := extendByteSlice(dst, needLen)
+	n, err := enc.Decode(b[len(dst):], src)
+	return b[:len(dst)+n], err
 }
 
 func selectProtocol(protos [][]byte, accepted []string) string {
