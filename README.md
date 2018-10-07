@@ -85,7 +85,7 @@ if err != nil {
 conn.WriteString("Hello")
 ```
 
-# Comparision.
+# fastws vs gorilla.
 
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)|
 | --------------------------------------- |:--------------:| -----:|
