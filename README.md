@@ -97,3 +97,28 @@ conn.WriteString("Hello")
 | Compression Extensions                  | On development | Experimental |
 | Read message using io.Reader            | On development | Yes |
 | Write message using io.WriteCloser      | On development | Yes |
+
+# Benchmarks
+
+```
+BenchmarkRandKey-4                         	   3000000	         474 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRead-4                            	  30000000	         49.2 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000ClientsPer10Message-4         	2000000000	         0.02 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000ClientsPer100Message-4        	2000000000	         0.06 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000ClientsPer1000Message-4       	2000000000	         0.40 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000HTTPClientsPer10Message-4     	1000000000	         0.06 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000HTTPClientsPer100Message-4    	2000000000	         0.08 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000HTTPClientsPer1000Message-4   	         1	2168832011 ns/op	2251288968 B/op	 5124470 allocs/op
+Benchmark100MsgsPerConn-4                  	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000MsgsPerConn-4                 	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
+Benchmark10000MsgsPerConn-4                	2000000000	         0.02 ns/op	       0 B/op	       0 allocs/op
+Benchmark100000MsgsPerConn-4               	2000000000	         0.17 ns/op	       0 B/op	       0 allocs/op
+Benchmark100MsgsHTTPPerConn-4              	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
+Benchmark1000MsgsHTTPPerConn-4             	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
+Benchmark10000MsgsHTTPPerConn-4            	2000000000	         0.03 ns/op	       0 B/op	       0 allocs/op
+Benchmark100000MsgsHTTPPerConn-4           	         2	 524879086 ns/op	443302144 B/op	 1000336 allocs/op
+BenchmarkBase64Encoding-4                  	  30000000	        35.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBase64Decoding-4                  	  20000000	        73.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMineEqualFold-4                   	  50000000	        31.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBytesEqualFold-4                  	  20000000	        94.3 ns/op	       0 B/op	       0 allocs/op
+```
