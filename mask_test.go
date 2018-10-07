@@ -11,9 +11,11 @@ var (
 )
 
 func TestUnmask(t *testing.T) {
+	m := make([]byte, len(toUnmask))
 	key := []byte{12, 96, 138, 48, 255}
-	mask(key, toUnmask)
-	if !bytes.Equal(unmasked, toUnmask) {
-		t.Fatalf("%s <> %s", toUnmask, unmasked)
+	copy(m, toUnmask)
+	mask(key, m)
+	if !bytes.Equal(unmasked, m) {
+		t.Fatalf("%v <> %s", m, unmasked)
 	}
 }
