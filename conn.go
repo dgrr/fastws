@@ -58,6 +58,9 @@ type Conn struct {
 	// extra bytes
 	extra []byte
 
+	b   bool
+	cnd *sync.Cond
+
 	// Mode indicates Write default mode.
 	Mode Mode
 
@@ -97,7 +100,9 @@ func acquireConn(c net.Conn) (conn *Conn) {
 	if ci != nil {
 		conn = ci.(*Conn)
 	} else {
-		conn = &Conn{}
+		conn = &Conn{
+			cnd: sync.NewCond(&sync.Mutex{}),
+		}
 	}
 	conn.Reset(c)
 	return conn
@@ -221,21 +226,28 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	if conn.closed {
-		err = EOF
-	} else {
-		atomic.AddInt64(&conn.n, 1)
-		br := conn.acquireReader()
-		var n uint64
-
-		if conn.closed {
-			err = EOF
-		} else {
-			n, err = fr.ReadFrom(br)
-			nn = int(n)
-		}
-		conn.releaseReader(br)
-		atomic.AddInt64(&conn.n, -1)
+		return 0, EOF
 	}
+	conn.cnd.L.Lock()
+	for conn.b {
+		conn.cnd.Wait()
+	}
+	conn.b = true
+	conn.cnd.L.Unlock()
+
+	var n uint64
+	br := conn.acquireReader()
+	n, err = fr.ReadFrom(br)
+	nn = int(n)
+
+	conn.releaseReader(br)
+	atomic.AddInt64(&conn.n, -1)
+
+	conn.cnd.L.Lock()
+	conn.b = false
+	conn.cnd.L.Unlock()
+
+	conn.cnd.Signal()
 	return
 }
 

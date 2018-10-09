@@ -427,17 +427,23 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 			}
 		}
 		if err == nil { // reading payload
-			fr.payload = fr.payload[:fr.max]
-
-			n, err = br.Read(fr.payload)
-			if err == nil {
-				nn = uint64(n)
-				fr.payload = fr.payload[:nn]
-			}
 			if fr.Len() > fr.max {
-				err = fmt.Errorf("Max payload size %d <> %d expected", fr.Len(), fr.max)
+				err = fmt.Errorf("Max payload size exceeded (%d < %d)", fr.max, fr.Len())
+			} else {
+				nn = fr.Len()
+				if nn < 0 {
+					err = errNegativeLen
+				} else {
+					n, err = br.Read(fr.payload[:nn])
+					if err == nil {
+						nn = uint64(n)
+						fr.payload = fr.payload[:nn]
+					}
+				}
 			}
 		}
 	}
 	return
 }
+
+var errNegativeLen = errors.New("Negative len")
