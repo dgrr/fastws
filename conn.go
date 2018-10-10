@@ -1,7 +1,6 @@
 package fastws
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"sync"
@@ -49,7 +48,6 @@ type Conn struct {
 	c net.Conn
 
 	wpool sync.Pool
-	rpool sync.Pool
 
 	server   bool
 	compress bool
@@ -112,17 +110,6 @@ func releaseConn(conn *Conn) {
 	connPool.Put(conn)
 }
 
-func (conn *Conn) acquireReader() (br *bufio.Reader) {
-	r := conn.rpool.Get()
-	if r == nil {
-		br = bufio.NewReader(conn.c)
-	} else {
-		br = r.(*bufio.Reader)
-		br.Reset(conn.c)
-	}
-	return br
-}
-
 func (conn *Conn) acquireWriter() (bw *bufferWriter) {
 	w := conn.wpool.Get()
 	if w == nil {
@@ -134,10 +121,6 @@ func (conn *Conn) acquireWriter() (bw *bufferWriter) {
 		bw.Reset(conn.c)
 	}
 	return bw
-}
-
-func (conn *Conn) releaseReader(br *bufio.Reader) {
-	conn.rpool.Put(br)
 }
 
 func (conn *Conn) releaseWriter(bw *bufferWriter) {
@@ -236,11 +219,9 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	conn.cnd.L.Unlock()
 
 	var n uint64
-	br := conn.acquireReader()
-	n, err = fr.ReadFrom(br)
+	n, err = fr.ReadFrom(conn.c) // read directly
 	nn = int(n)
 
-	conn.releaseReader(br)
 	atomic.AddInt64(&conn.n, -1)
 
 	conn.cnd.L.Lock()
