@@ -29,16 +29,19 @@ func Client(c net.Conn, url string) (conn *Conn, err error) {
 	uri.Update(url)
 
 	origin := bytePool.Get().([]byte)
+	key := bytePool.Get().([]byte)
 	defer bytePool.Put(origin)
+	defer bytePool.Put(key)
 
 	origin = prepareOrigin(origin, uri)
+	key = makeRandKey(key[:0])
 
 	req.Header.SetMethod("GET")
 	req.Header.AddBytesKV(originString, origin)
 	req.Header.AddBytesKV(connectionString, upgradeString)
 	req.Header.AddBytesKV(upgradeString, websocketString)
 	req.Header.AddBytesKV(wsHeaderVersion, supportedVersions[0])
-	req.Header.AddBytesKV(wsHeaderKey, makeRandKey(nil))
+	req.Header.AddBytesKV(wsHeaderKey, key)
 	// TODO: Add compression
 
 	req.SetRequestURIBytes(uri.FullURI())
@@ -76,6 +79,8 @@ func Dial(url string) (conn *Conn, err error) {
 	uri.SetScheme(scheme)
 
 	addr := bytePool.Get().([]byte)
+	defer bytePool.Put(addr)
+
 	addr = append(addr[:0], uri.Host()...)
 	if n := bytes.LastIndexByte(addr, ':'); n == -1 {
 		addr = append(addr, port...)
