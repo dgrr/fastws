@@ -342,7 +342,10 @@ func (fr *Frame) prepare() (err error) {
 	return
 }
 
-func (fr *Frame) setError(status StatusCode) {
+// SetStatus sets status code to the request.
+//
+// Status code is usually used in Close request.
+func (fr *Frame) SetStatus(status StatusCode) {
 	if cap(fr.payload) < 2 {
 		fr.payload = append(fr.payload, make([]byte, 2)...)
 	}

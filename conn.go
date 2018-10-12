@@ -175,7 +175,7 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 	fr.SetFin()
 	fr.SetCode(code)
 	if status > 0 {
-		fr.setError(status)
+		fr.SetStatus(status)
 	}
 	if b != nil {
 		fr.Write(b)
