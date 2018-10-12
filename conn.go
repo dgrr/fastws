@@ -180,6 +180,9 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 	if b != nil {
 		fr.Write(b)
 	}
+	if !conn.server && !fr.IsMasked() {
+		fr.Mask()
+	}
 	_, err := conn.WriteFrame(fr)
 	ReleaseFrame(fr)
 	return err
@@ -332,16 +335,21 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
-	conn.closed = true
+	var fr *Frame
 	for atomic.LoadInt64(&conn.n) > 0 {
 		time.Sleep(time.Millisecond * 20)
 	}
 
 	err := conn.SendCodeString(CodeClose, StatusNone, b)
 	if err == nil {
-		err = conn.c.Close()
+		fr, err = conn.NextFrame()
 		if err == nil {
-			conn.c = nil
+			conn.closed = true
+			ReleaseFrame(fr)
+			err = conn.c.Close()
+			if err == nil {
+				conn.c = nil
+			}
 		}
 	}
 	return err
