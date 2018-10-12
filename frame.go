@@ -342,6 +342,16 @@ func (fr *Frame) prepare() (err error) {
 	return
 }
 
+// Status returns StatusCode from request payload.
+func (fr *Frame) Status() (status StatusCode) {
+	if len(fr.payload) > 1 {
+		status = StatusCode(
+			binary.BigEndian.Uint16(fr.payload[:2]),
+		)
+	}
+	return
+}
+
 // SetStatus sets status code to the request.
 //
 // Status code is usually used in Close request.
