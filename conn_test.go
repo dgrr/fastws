@@ -47,6 +47,7 @@ func configureServer(t *testing.T) (*fasthttp.Server, *fasthttputil.InmemoryList
 			if string(b) != "Hello world" {
 				t.Fatalf("%s <> Hello world", b)
 			}
+			conn.Close("Bye")
 		}),
 	}
 	return s, ln
@@ -75,8 +76,8 @@ func TestReadFrame(t *testing.T) {
 	s, ln := configureServer(t)
 	ch := make(chan struct{})
 	go func() {
-		go s.Serve(ln)
-		<-ch
+		s.Serve(ln)
+		ch <- struct{}{}
 	}()
 
 	conn := openConn(t, ln)
@@ -111,6 +112,7 @@ func TestReadFrame(t *testing.T) {
 	fr.SetText()
 	fr.SetContinuation()
 	fr.SetPayload([]byte("Hello"))
+	fr.Mask()
 	_, err = conn.WriteFrame(fr)
 	if err != nil {
 		t.Fatal(err)
@@ -120,11 +122,33 @@ func TestReadFrame(t *testing.T) {
 	fr.SetText()
 	fr.SetFin()
 	fr.SetPayload([]byte(" world"))
+	fr.Mask()
+	_, err = conn.WriteFrame(fr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ch <- struct{}{}
+	fr, err = conn.NextFrame()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fr.IsClose() {
+		t.Fatal("Unexpected frame: no close")
+	}
+	p := fr.Payload()
+	if string(p) != "Bye" {
+		t.Fatalf("Unexpected payload: %s <> Bye", p)
+	}
+	if fr.Status() != StatusNone {
+		t.Fatalf("Status unexpected: %d <> %d", fr.Status(), StatusNone)
+	}
+	err = conn.SendCode(fr.Code(), fr.Status(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ln.Close()
+	<-ch
 }
 
 func handleConcurrentRead(conn *Conn) (err error) {
@@ -135,7 +159,7 @@ func handleConcurrentRead(conn *Conn) (err error) {
 			if err == EOF {
 				err = nil
 			}
-			break
+			return
 		}
 		if string(b) != textToSend {
 			err = fmt.Errorf("%s <> %s", b, textToSend)
@@ -147,18 +171,12 @@ func handleConcurrentRead(conn *Conn) (err error) {
 
 var textToSend = "hello"
 
-func writeAndReadConcurrently(conn *Conn) (err error) {
-	for i := 0; i < 100; i++ {
+func writeConcurrently(conn *Conn) (err error) {
+	for i := 0; i < 10; i++ {
 		_, err = conn.WriteString(textToSend)
 		if err != nil {
-			if err == EOF {
-				err = nil
-			}
 			break
 		}
-	}
-	if err == nil {
-		conn.Close("")
 	}
 	return
 }
@@ -168,14 +186,14 @@ func TestReadConcurrently(t *testing.T) {
 	s := fasthttp.Server{
 		Handler: Upgrade(func(conn *Conn) {
 			var wg sync.WaitGroup
-			for i := 0; i < 100; i++ {
+			for i := 0; i < 10; i++ {
 				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					err := handleConcurrentRead(conn)
 					if err != nil {
 						panic(err)
 					}
-					wg.Done()
 				}()
 			}
 			wg.Wait()
@@ -185,16 +203,18 @@ func TestReadConcurrently(t *testing.T) {
 
 	var wg sync.WaitGroup
 	conn := openConn(t, ln)
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
-			err := writeAndReadConcurrently(conn)
+			defer wg.Done()
+			err := writeConcurrently(conn)
 			if err != nil {
 				panic(err)
 			}
-			wg.Done()
 		}()
 	}
 	wg.Wait()
+	conn.Close("")
+	s.Shutdown()
 	ln.Close()
 }
