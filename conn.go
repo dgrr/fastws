@@ -1,6 +1,7 @@
 package fastws
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -190,7 +191,7 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	if conn.closed {
+	if conn.c == nil {
 		return 0, EOF
 	}
 	atomic.AddInt64(&conn.n, 1)
@@ -211,9 +212,6 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	if conn.closed {
-		return 0, EOF
-	}
 	conn.cnd.L.Lock()
 	for conn.b {
 		conn.cnd.Wait()
@@ -264,7 +262,10 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 		fr.Reset()
 		c = true
 	case fr.IsClose():
-		err = EOF
+		err = conn.replyClose(fr)
+		if err == nil {
+			err = EOF
+		}
 	}
 	return
 }
@@ -314,9 +315,8 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 			}
 		}
 
-		if conn.server && fr.IsMasked() {
+		if fr.IsMasked() {
 			fr.Unmask()
-			fr.UnsetMask()
 		}
 
 		b = append(b, fr.payload...)
@@ -331,20 +331,55 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	return fr.Mode(), b, err
 }
 
+func (conn *Conn) sendClose(b []byte) (err error) {
+	fr := AcquireFrame()
+	fr.SetFin()
+	fr.SetClose()
+	fr.SetStatus(StatusNone)
+	if len(b) > 0 {
+		fr.SetPayload(b)
+	}
+	if !conn.server {
+		fr.Mask()
+	}
+	_, err = conn.WriteFrame(fr)
+	ReleaseFrame(fr)
+	return
+}
+
+var errNilFrame = errors.New("frame cannot be nil")
+
+func (conn *Conn) replyClose(fr *Frame) (err error) {
+	if fr == nil {
+		return errNilFrame
+	}
+	fr.SetFin()
+	fr.parseStatus()
+	fr.resetPayload()
+	_, err = conn.WriteFrame(fr)
+	return
+}
+
 // Close sends b as close reason and closes the descriptor.
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
-	var fr *Frame
 	for atomic.LoadInt64(&conn.n) > 0 {
 		time.Sleep(time.Millisecond * 20)
 	}
+	conn.closed = true
 
-	err := conn.SendCodeString(CodeClose, StatusNone, b)
+	var bb []byte
+	var fr *Frame
+
+	if b != "" {
+		bb = s2b(b)
+	}
+
+	err := conn.sendClose(bb)
 	if err == nil {
 		fr, err = conn.NextFrame()
 		if err == nil || err == EOF {
-			conn.closed = true
 			if fr != nil {
 				ReleaseFrame(fr)
 			}

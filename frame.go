@@ -48,6 +48,7 @@ const (
 // This type can be used if you want low level access to websocket.
 type Frame struct {
 	max     uint64
+	status  []byte
 	raw     []byte
 	rawCopy []byte
 	mask    []byte
@@ -56,13 +57,16 @@ type Frame struct {
 
 var framePool = sync.Pool{
 	New: func() interface{} {
-		return &Frame{
+		fr := &Frame{
 			max:     maxPayloadSize,
 			mask:    make([]byte, 4),
+			status:  make([]byte, 2),
 			raw:     make([]byte, maxHeaderSize),
 			rawCopy: make([]byte, maxHeaderSize),
 			payload: make([]byte, maxPayloadSize),
 		}
+		fr.payload = fr.payload[:0]
+		return fr
 	},
 }
 
@@ -85,8 +89,9 @@ func (fr *Frame) resetHeader() {
 	fr.mask = fr.mask[:4]
 	fr.raw = fr.raw[:maxHeaderSize]
 	fr.rawCopy = fr.rawCopy[:maxHeaderSize]
-	copy(fr.mask, zeroBytes)
 	copy(fr.raw, zeroBytes)
+	copy(fr.mask, zeroBytes)
+	copy(fr.status, zeroBytes)
 	copy(fr.rawCopy, zeroBytes)
 }
 
@@ -183,8 +188,16 @@ func (fr *Frame) MaskKey() []byte {
 	return fr.mask
 }
 
+func (fr *Frame) parseStatus() {
+	copy(fr.status[:2], fr.payload[:2])
+	fr.payload = fr.payload[2:]
+}
+
 // Payload returns Frame payload.
 func (fr *Frame) Payload() []byte {
+	if fr.IsClose() && !fr.hasStatus() {
+		fr.parseStatus()
+	}
 	return fr.payload
 }
 
@@ -280,7 +293,15 @@ func (fr *Frame) SetPayload(b []byte) {
 }
 
 func (fr *Frame) setPayload(i int, b []byte) {
-	n := len(b) + i
+	// TODO: Check max size
+	fr.payload = append(fr.payload[:i], b...)
+}
+
+func (fr *Frame) setLengthPayload() {
+	n := len(fr.payload)
+	if fr.hasStatus() {
+		n += 2
+	}
 	switch {
 	case n > 65535:
 		fr.setLength(127)
@@ -291,7 +312,6 @@ func (fr *Frame) setPayload(i int, b []byte) {
 	default:
 		fr.setLength(n)
 	}
-	fr.payload = append(fr.payload[:i], b...)
 }
 
 func (fr *Frame) setLength(n int) {
@@ -300,9 +320,11 @@ func (fr *Frame) setLength(n int) {
 
 // Mask masks Frame payload.
 func (fr *Frame) Mask() {
-	fr.raw[1] |= maskBit
-	readMask(fr.mask[:4])
-	mask(fr.mask, fr.payload)
+	if len(fr.payload) > 0 {
+		fr.raw[1] |= maskBit
+		readMask(fr.mask[:4])
+		mask(fr.mask, fr.payload)
+	}
 }
 
 // Unmask unmasks Frame payload.
@@ -310,7 +332,12 @@ func (fr *Frame) Unmask() {
 	key := fr.MaskKey()
 	if len(key) == 4 {
 		mask(key, fr.payload)
+		fr.UnsetMask()
 	}
+}
+
+func (fr *Frame) hasStatus() bool {
+	return fr.status[0] > 0 && fr.status[1] > 0
 }
 
 // WriteTo flushes Frame data into wr.
@@ -320,35 +347,47 @@ func (fr *Frame) WriteTo(wr io.Writer) (n uint64, err error) {
 	err = fr.prepare()
 	if err == nil {
 		nn, err = wr.Write(fr.raw)
-		if err == nil && len(fr.payload) > 0 {
+		if err == nil {
 			n += uint64(nn)
-			nn, err = wr.Write(fr.payload)
+			ln := fr.Len()
+			// writing status
+			if fr.hasStatus() {
+				ln -= 2
+				nn, err = wr.Write(fr.status[:2])
+				n += uint64(nn)
+			}
+			// writing payload
+			if err == nil && ln > 0 {
+				nn, err = wr.Write(fr.payload[:ln])
+				n += uint64(nn)
+			}
 		}
-		n += uint64(nn)
 	}
 	return
 }
 
 func (fr *Frame) prepare() (err error) {
-	copy(fr.rawCopy, fr.raw)
-
+	fr.setLengthPayload()
+	fr.rawCopy = append(fr.rawCopy[:0], fr.raw...)
 	fr.raw = append(fr.raw[:0], fr.rawCopy[:2]...)
+
 	err = fr.appendByLen()
 	if err != nil {
 		fr.raw = fr.raw[:maxHeaderSize]
 	} else if fr.IsMasked() {
-		fr.raw = append(fr.raw, fr.mask...)
+		fr.raw = append(fr.raw, fr.mask[:4]...)
 	}
 	return
 }
 
 // Status returns StatusCode from request payload.
 func (fr *Frame) Status() (status StatusCode) {
-	if len(fr.payload) > 1 {
-		status = StatusCode(
-			binary.BigEndian.Uint16(fr.payload[:2]),
-		)
+	if fr.IsClose() && !fr.hasStatus() {
+		fr.parseStatus()
 	}
+	status = StatusCode(
+		binary.BigEndian.Uint16(fr.status[:2]),
+	)
 	return
 }
 
@@ -356,11 +395,7 @@ func (fr *Frame) Status() (status StatusCode) {
 //
 // Status code is usually used in Close request.
 func (fr *Frame) SetStatus(status StatusCode) {
-	if cap(fr.payload) < 2 {
-		fr.payload = append(fr.payload, make([]byte, 2)...)
-	}
-	fr.payload = fr.payload[:2]
-	binary.BigEndian.PutUint16(fr.payload, uint16(status))
+	binary.BigEndian.PutUint16(fr.status[:2], uint16(status))
 }
 
 func (fr *Frame) mustRead() (n int) {
@@ -421,17 +456,16 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 		err = errReadingHeader
 	}
 	if err == nil {
-		m = fr.mustRead()
-		if m > 0 { // reading length
-			n, err = br.Read(fr.raw[2 : m+2])
-			if n < m {
+		m = fr.mustRead() + 2
+		if m > 2 { // reading length
+			n, err = br.Read(fr.raw[2:m])
+			if n+2 < m {
 				err = errReadingLen
 			} else {
-				m += 2
 				n = m
 			}
 		}
-		if fr.IsMasked() && err == nil { // reading mask
+		if err == nil && fr.IsMasked() { // reading mask
 			m, err = br.Read(fr.raw[n : n+4])
 			if m < 4 {
 				err = errReadingMask
@@ -446,12 +480,10 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 				nn = fr.Len()
 				if nn < 0 {
 					err = errNegativeLen
-				} else {
-					n, err = br.Read(fr.payload[:nn])
-					if err == nil {
-						nn = uint64(n)
-						fr.payload = fr.payload[:nn]
-					}
+				} else if nn > 0 {
+					fr.payload = fr.payload[:nn]
+					n, err = br.Read(fr.payload)
+					nn = uint64(n)
 				}
 			}
 		}
