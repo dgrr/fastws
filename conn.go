@@ -343,9 +343,11 @@ func (conn *Conn) Close(b string) error {
 	err := conn.SendCodeString(CodeClose, StatusNone, b)
 	if err == nil {
 		fr, err = conn.NextFrame()
-		if err == nil {
+		if err == nil || err == EOF {
 			conn.closed = true
-			ReleaseFrame(fr)
+			if fr != nil {
+				ReleaseFrame(fr)
+			}
 			err = conn.c.Close()
 			if err == nil {
 				conn.c = nil
