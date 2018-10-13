@@ -262,7 +262,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 		fr.Reset()
 		c = true
 	case fr.IsClose():
-		err = conn.replyClose(fr)
+		err = conn.ReplyClose(fr)
 		if err == nil {
 			err = EOF
 		}
@@ -349,7 +349,8 @@ func (conn *Conn) sendClose(b []byte) (err error) {
 
 var errNilFrame = errors.New("frame cannot be nil")
 
-func (conn *Conn) replyClose(fr *Frame) (err error) {
+// ReplyClose is used to reply to CodeClose.
+func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 	if fr == nil {
 		return errNilFrame
 	}
