@@ -100,25 +100,27 @@ conn.WriteString("Hello")
 
 # Benchmarks
 
+Fastws:
+
 ```
-BenchmarkRandKey-4                         	   3000000	         474 ns/op	       0 B/op	       0 allocs/op
-BenchmarkRead-4                            	  30000000	         49.2 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000ClientsPer10Message-4         	2000000000	         0.02 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000ClientsPer100Message-4        	2000000000	         0.06 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000ClientsPer1000Message-4       	2000000000	         0.40 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000HTTPClientsPer10Message-4     	1000000000	         0.06 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000HTTPClientsPer100Message-4    	2000000000	         0.08 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000HTTPClientsPer1000Message-4   	         1	2168832011 ns/op	2251288968 B/op	 5124470 allocs/op
-Benchmark100MsgsPerConn-4                  	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000MsgsPerConn-4                 	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
-Benchmark10000MsgsPerConn-4                	2000000000	         0.02 ns/op	       0 B/op	       0 allocs/op
-Benchmark100000MsgsPerConn-4               	2000000000	         0.17 ns/op	       0 B/op	       0 allocs/op
-Benchmark100MsgsHTTPPerConn-4              	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
-Benchmark1000MsgsHTTPPerConn-4             	2000000000	         0.01 ns/op	       0 B/op	       0 allocs/op
-Benchmark10000MsgsHTTPPerConn-4            	2000000000	         0.03 ns/op	       0 B/op	       0 allocs/op
-Benchmark100000MsgsHTTPPerConn-4           	         2	 524879086 ns/op	443302144 B/op	 1000336 allocs/op
-BenchmarkBase64Encoding-4                  	  30000000	        35.8 ns/op	       0 B/op	       0 allocs/op
-BenchmarkBase64Decoding-4                  	  20000000	        73.9 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMineEqualFold-4                   	  50000000	        31.1 ns/op	       0 B/op	       0 allocs/op
-BenchmarkBytesEqualFold-4                  	  20000000	        94.3 ns/op	       0 B/op	       0 allocs/op
+$ go test -v -bench=Fast -benchmem -benchtime=10s
+Benchmark1000FastClientsPer10Messages-2         50000000               317 ns/op               0 B/op          0 allocs/op
+Benchmark1000FastClientsPer100Messages-2        500000000               36.7 ns/op             0 B/op          0 allocs/op
+Benchmark1000FastClientsPer1000Messages-2       5000000000               3.63 ns/op            0 B/op          0 allocs/op
+Benchmark100FastMsgsPerConn-2                   500000000               38.2 ns/op             0 B/op          0 allocs/op
+Benchmark1000FastMsgsPerConn-2                  5000000000               3.67 ns/op            0 B/op          0 allocs/op
+Benchmark10000FastMsgsPerConn-2                 10000000000              0.47 ns/op            0 B/op          0 allocs/op
+Benchmark100000FastMsgsPerConn-2                10000000000              0.03 ns/op            0 B/op          0 allocs/op
+```
+
+Gorilla:
+```
+$ go test -v -bench=Gorilla -benchmem -benchtime=10s
+Benchmark1000GorillaClientsPer10Messages-2      20000000               813 ns/op              86 B/op          1 allocs/op
+Benchmark1000GorillaClientsPer100Messages-2     200000000               75.4 ns/op             8 B/op          0 allocs/op
+Benchmark1000GorillaClientsPer1000Messages-2    2000000000               7.54 ns/op            0 B/op          0 allocs/op
+Benchmark100GorillaMsgsPerConn-2                200000000               85.0 ns/op             8 B/op          0 allocs/op
+Benchmark1000GorillaMsgsPerConn-2               2000000000               8.12 ns/op            0 B/op          0 allocs/op
+Benchmark10000GorillaMsgsPerConn-2              10000000000              0.84 ns/op            0 B/op          0 allocs/op
+Benchmark100000GorillaMsgsPerConn-2             10000000000              0.08 ns/op            0 B/op          0 allocs/op
 ```
