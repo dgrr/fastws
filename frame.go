@@ -190,7 +190,7 @@ func (fr *Frame) MaskKey() []byte {
 
 func (fr *Frame) parseStatus() {
 	copy(fr.status[:2], fr.payload[:2])
-	fr.payload = fr.payload[2:]
+	fr.payload = append(fr.payload[:0], fr.payload[2:]...)
 }
 
 // Payload returns Frame payload.
