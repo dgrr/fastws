@@ -49,6 +49,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// Checking Origin header if needed
 	origin := ctx.Request.Header.Peek("Origin")
 	if upgr.Origin != "" {
 		uri := fasthttp.AcquireURI()
@@ -66,18 +67,27 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 		bytePool.Put(b)
 	}
 
+	// Normalizing must be disabled because of WebSocket header fields.
+	// (This is not a fasthttp bug).
 	ctx.Response.Header.DisableNormalizing()
 
+	// Getting Connection header value.
 	hconn := ctx.Request.Header.PeekBytes(connectionString)
+	// Connection.Value == Upgrade
 	if bytes.Equal(hconn, upgradeString) {
+		// Peek upgrade header field.
 		hup := ctx.Request.Header.PeekBytes(upgradeString)
+		// Compare with websocket string defined by the RFC
 		if bytes.Equal(hup, websocketString) {
+			// Checking websocket version
 			hversion := ctx.Request.Header.PeekBytes(wsHeaderVersion)
+			// Peeking websocket key.
 			hkey := ctx.Request.Header.PeekBytes(wsHeaderKey)
-			hprotos := bytes.Split(
+			hprotos := bytes.Split( // TODO: Reduce allocations. Do not split. Use IndexByte
 				ctx.Request.Header.PeekBytes(wsHeaderProtocol), commaString,
 			)
 			supported := false
+			// Checking versions
 			for i := range supportedVersions {
 				if bytes.Equal(supportedVersions[i], hversion) {
 					supported = true
@@ -85,12 +95,14 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				}
 			}
 			if !supported {
-				ctx.Error("Not supported version", fasthttp.StatusBadRequest)
+				ctx.Error("Versions not supported", fasthttp.StatusBadRequest)
 				return
 			}
+			// TODO: compression
 			//compress := mustCompress(exts)
 			compress := false
 
+			// Setting response headers
 			ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
 			ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
 			ctx.Response.Header.AddBytesKV(upgradeString, websocketString)

@@ -17,7 +17,7 @@ var (
 
 // Client returns Conn using existing connection.
 //
-// uri must be complete uri i.e. http://localhost:8080/ws
+// url must be complete URL format i.e. http://localhost:8080/ws
 func Client(c net.Conn, url string) (conn *Conn, err error) {
 	req := fasthttp.AcquireRequest()
 	res := fasthttp.AcquireResponse()
