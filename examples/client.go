@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/dgrr/fastws"
@@ -13,7 +13,7 @@ func main() {
 
 	conn, err := fastws.Dial("ws://localhost:8080/echo")
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalln(err)
 	}
 	conn.WriteString("Hello")
 
@@ -23,7 +23,7 @@ func main() {
 		if err != nil {
 			break
 		}
-		fmt.Printf("Client: %s\n", msg)
+		log.Printf("Client: %s\n", msg)
 		conn.Write(msg)
 		time.Sleep(time.Second)
 	}
@@ -40,7 +40,7 @@ func echo(c *fastws.Conn) {
 		if err != nil {
 			break
 		}
-		fmt.Printf("Server: %s\n", msg)
+		log.Printf("Server: %s\n", msg)
 
 		_, err = c.Write(msg)
 		if err != nil {
@@ -50,5 +50,7 @@ func echo(c *fastws.Conn) {
 }
 
 func startServer(addr string) {
-	fasthttp.ListenAndServe(addr, fastws.Upgrade(echo))
+	if err := fasthttp.ListenAndServe(addr, fastws.Upgrade(echo)); err != nil {
+		log.Fatalln(err)
+	}
 }

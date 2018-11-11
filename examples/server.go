@@ -16,13 +16,17 @@ func main() {
 	router.GET("/", rootHandler)
 	router.GET("/ws", fastws.Upgrade(wsHandler))
 
-	go fasthttp.ListenAndServe(":8080", router.Handler)
+	server := fasthttp.Server{
+		Handler: router.Handler,
+	}
+	go server.ListenAndServe(":8080")
 
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt)
 	<-sigCh
 	signal.Stop(sigCh)
 	signal.Reset(os.Interrupt)
+	server.Shutdown()
 }
 
 func wsHandler(conn *fastws.Conn) {
