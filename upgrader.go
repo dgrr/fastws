@@ -144,7 +144,7 @@ func makeKey(dst, key []byte) []byte {
 	h.Write(key)
 	h.Write(uidKey)
 	dst = h.Sum(dst[:0])
-	dst = appendEncode(base64, dst[:0], dst)
+	dst = appendEncode(base64, dst, dst)
 	return dst
 }
 
@@ -152,10 +152,11 @@ func makeKey(dst, key []byte) []byte {
 //
 // https://go-review.googlesource.com/c/go/+/37639
 func appendEncode(enc *b64.Encoding, dst, src []byte) []byte {
-	needLen := enc.EncodedLen(len(src)) + len(dst)
-	b := extendByteSlice(dst, needLen)
-	enc.Encode(b[len(dst):], src)
-	return b
+	n := enc.EncodedLen(len(src)) + len(dst)
+	b := extendByteSlice(dst, n)
+	n = len(dst)
+	enc.Encode(b[n:], src)
+	return b[n:]
 }
 
 func appendDecode(enc *b64.Encoding, dst, src []byte) ([]byte, error) {
