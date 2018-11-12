@@ -74,11 +74,11 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 	// Getting Connection header value.
 	hconn := ctx.Request.Header.PeekBytes(connectionString)
 	// Connection.Value == Upgrade
-	if bytes.Equal(hconn, upgradeString) {
+	if bytes.Contains(hconn, upgradeString) {
 		// Peek upgrade header field.
 		hup := ctx.Request.Header.PeekBytes(upgradeString)
 		// Compare with websocket string defined by the RFC
-		if bytes.Equal(hup, websocketString) {
+		if bytes.Contains(hup, websocketString) {
 			// Checking websocket version
 			hversion := ctx.Request.Header.PeekBytes(wsHeaderVersion)
 			// Peeking websocket key.
@@ -89,7 +89,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 			supported := false
 			// Checking versions
 			for i := range supportedVersions {
-				if bytes.Equal(supportedVersions[i], hversion) {
+				if bytes.Contains(supportedVersions[i], hversion) {
 					supported = true
 					break
 				}
