@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -47,23 +48,25 @@ const (
 // Frame could not be used during message exchanging.
 // This type can be used if you want low level access to websocket.
 type Frame struct {
-	max     uint64
-	status  []byte
-	raw     []byte
-	rawCopy []byte
-	mask    []byte
-	payload []byte
+	mustCompress bool
+	max          uint64
+	status       []byte
+	raw          []byte
+	rawCopy      []byte
+	mask         []byte
+	payload      []byte
 }
 
 var framePool = sync.Pool{
 	New: func() interface{} {
 		fr := &Frame{
-			max:     maxPayloadSize,
-			mask:    make([]byte, 4),
-			status:  make([]byte, 2),
-			raw:     make([]byte, maxHeaderSize),
-			rawCopy: make([]byte, maxHeaderSize),
-			payload: make([]byte, maxPayloadSize),
+			mustCompress: true,
+			max:          maxPayloadSize,
+			mask:         make([]byte, 4),
+			status:       make([]byte, 2),
+			raw:          make([]byte, maxHeaderSize),
+			rawCopy:      make([]byte, maxHeaderSize),
+			payload:      make([]byte, maxPayloadSize),
 		}
 		fr.payload = fr.payload[:0]
 		return fr
@@ -342,8 +345,12 @@ func (fr *Frame) hasStatus() bool {
 
 // WriteTo flushes Frame data into wr.
 func (fr *Frame) WriteTo(wr io.Writer) (n uint64, err error) {
+	var bw io.WriteCloser
 	var nn int
 
+	if fr.mustCompress {
+		fr.SetRSV1()
+	}
 	err = fr.prepare()
 	if err == nil {
 		nn, err = wr.Write(fr.raw)
@@ -358,7 +365,15 @@ func (fr *Frame) WriteTo(wr io.Writer) (n uint64, err error) {
 			}
 			// writing payload
 			if err == nil && ln > 0 {
-				nn, err = wr.Write(fr.payload[:ln])
+				if fr.mustCompress {
+					bw, err = acquireFlateWriter(wr)
+				}
+				if bw != nil {
+					nn, err = bw.Write(fr.payload[:ln])
+					bw.Close()
+				} else {
+					nn, err = wr.Write(fr.payload[:ln])
+				}
 				n += uint64(nn)
 			}
 		}
@@ -481,9 +496,17 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 				if nn < 0 {
 					err = errNegativeLen
 				} else if nn > 0 {
+					rd := br
 					fr.payload = fr.payload[:nn]
-					n, err = br.Read(fr.payload)
-					nn = uint64(n)
+					if fr.HasRSV1() {
+						rd, err = acquireFlateReader(
+							io.MultiReader(br, strings.NewReader("\x00\x00\xff\xff")),
+						)
+					}
+					if err == nil {
+						n, err = rd.Read(fr.payload[:4])
+						nn = uint64(n)
+					}
 				}
 			}
 		}

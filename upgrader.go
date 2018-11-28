@@ -89,7 +89,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 			supported := false
 			// Checking versions
 			for i := range supportedVersions {
-				if bytes.Contains(supportedVersions[i], hversion) {
+				if bytes.Contains(hversion, supportedVersions[i]) {
 					supported = true
 					break
 				}
@@ -98,15 +98,17 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				ctx.Error("Versions not supported", fasthttp.StatusBadRequest)
 				return
 			}
-			// TODO: compression
-			//compress := mustCompress(exts)
-			compress := false
+			compress := mustCompress(&ctx.Request)
+			println("compression: ", compress)
 
 			// Setting response headers
 			ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
 			ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
 			ctx.Response.Header.AddBytesKV(upgradeString, websocketString)
 			ctx.Response.Header.AddBytesKV(wsHeaderAccept, makeKey(hkey, hkey))
+			if compress {
+				ctx.Response.Header.AddBytesK(wsHeaderExtensions, "permessage-deflate")
+			}
 			// TODO: implement bad websocket version
 			// https://tools.ietf.org/html/rfc6455#section-4.4
 			if proto := selectProtocol(hprotos, upgr.Protocols); proto != "" {
