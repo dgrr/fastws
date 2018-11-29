@@ -88,15 +88,16 @@ conn.WriteString("Hello")
 # fastws vs gorilla.
 
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)|
-| --------------------------------------- |:--------------:| -----:|
-| Passes Autobahn Test Suite              | On development | Yes |
-| Receive fragmented message              | Yes            | Yes  |
-| Send close message                      | Yes            | Yes |
-| Send pings and receive pongs            | Yes            | Yes |
-| Get the type of a received data message | Yes            | Yes |
+| --------------------------------------- |:--------------:| ------------:|
+| Concurrent R/W                          | Yes            | No           |
+| Passes Autobahn Test Suite              | On development | Yes          |
+| Receive fragmented message              | Yes            | Yes          |
+| Send close message                      | Yes            | Yes          |
+| Send pings and receive pongs            | Yes            | Yes          |
+| Get the type of a received data message | Yes            | Yes          |
 | Compression Extensions                  | On development | Experimental |
-| Read message using io.Reader            | On development | Yes |
-| Write message using io.WriteCloser      | On development | Yes |
+| Read message using io.Reader            | Non planned    | Yes          |
+| Write message using io.WriteCloser      | Non planned    | Yes          |
 
 # Benchmarks
 
