@@ -437,8 +437,15 @@ var (
 )
 
 // ReadFrom fills fr reading from rd.
+//
+// if rd == nil then ReadFrom returns EOF
 func (fr *Frame) ReadFrom(rd io.Reader) (nn uint64, err error) {
-	return fr.readFrom(rd)
+	if rd == nil {
+		err = EOF
+	} else {
+		nn, err = fr.readFrom(rd)
+	}
+	return
 }
 
 var (

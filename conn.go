@@ -52,7 +52,6 @@ type Conn struct {
 
 	server   bool
 	compress bool
-	closed   bool
 
 	// extra bytes
 	extra []byte
@@ -133,7 +132,6 @@ func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
 		conn.Close("")
 	}
-	conn.closed = false
 	conn.n = 0
 	conn.MaxPayloadSize = maxPayloadSize
 	conn.extra = conn.extra[:0]
@@ -208,28 +206,35 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	return int(nn), err
 }
 
-// ReadFrame fills fr with the next connection frame.
-//
-// This function responds automatically to PING and PONG messages.
-func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
+func (conn *Conn) acquireBusy() {
 	conn.cnd.L.Lock()
 	for conn.b {
 		conn.cnd.Wait()
 	}
 	conn.b = true
 	conn.cnd.L.Unlock()
+}
+
+func (conn *Conn) releaseBusy() {
+	conn.cnd.L.Lock()
+	conn.b = false
+	conn.cnd.L.Unlock()
+	conn.cnd.Signal()
+}
+
+// ReadFrame fills fr with the next connection frame.
+//
+// This function responds automatically to PING and PONG messages.
+func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
+	conn.acquireBusy()
+	atomic.AddInt64(&conn.n, 1)
 
 	var n uint64
 	n, err = fr.ReadFrom(conn.c) // read directly
 	nn = int(n)
 
 	atomic.AddInt64(&conn.n, -1)
-
-	conn.cnd.L.Lock()
-	conn.b = false
-	conn.cnd.L.Unlock()
-
-	conn.cnd.Signal()
+	conn.releaseBusy()
 	return
 }
 
@@ -272,7 +277,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 
 // TODO: Add timeout
 func (conn *Conn) write(mode Mode, b []byte) (int, error) {
-	if conn.closed {
+	if conn.c == nil {
 		return 0, EOF
 	}
 
@@ -295,7 +300,7 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
-	if conn.closed {
+	if conn.c == nil {
 		return 0, b, EOF
 	}
 
@@ -365,10 +370,11 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
+	conn.acquireBusy()
+
 	for atomic.LoadInt64(&conn.n) > 0 {
 		time.Sleep(time.Millisecond * 20)
 	}
-	conn.closed = true
 
 	var bb []byte
 	var fr *Frame
@@ -378,6 +384,7 @@ func (conn *Conn) Close(b string) error {
 	}
 
 	err := conn.sendClose(bb)
+	conn.releaseBusy()
 	if err == nil {
 		fr, err = conn.NextFrame()
 		if err == nil || err == EOF {
