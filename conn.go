@@ -53,9 +53,6 @@ type Conn struct {
 	server   bool
 	compress bool
 
-	// extra bytes
-	extra []byte
-
 	b   bool
 	cnd *sync.Cond
 
@@ -134,7 +131,6 @@ func (conn *Conn) Reset(c net.Conn) {
 	}
 	conn.n = 0
 	conn.MaxPayloadSize = maxPayloadSize
-	conn.extra = conn.extra[:0]
 	conn.c = c
 }
 
@@ -319,6 +315,9 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 				continue
 			}
 		}
+		if err != nil {
+			break
+		}
 
 		if fr.IsMasked() {
 			fr.Unmask()
@@ -336,12 +335,14 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	return fr.Mode(), b, err
 }
 
-func (conn *Conn) sendClose(b []byte) (err error) {
+func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	fr := AcquireFrame()
 	fr.SetFin()
 	fr.SetClose()
-	fr.SetStatus(StatusNone)
+	// If there is a body, the first two bytes of
+	// the body MUST be a 2-byte unsigned integer
 	if len(b) > 0 {
+		fr.SetStatus(status)
 		fr.SetPayload(b)
 	}
 	if !conn.server {
@@ -360,8 +361,8 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 		return errNilFrame
 	}
 	fr.SetFin()
+	fr.SetClose()
 	fr.parseStatus()
-	fr.resetPayload()
 	_, err = conn.WriteFrame(fr)
 	return
 }
@@ -370,6 +371,9 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) Close(b string) error {
+	if conn.c == nil {
+		return EOF
+	}
 	conn.acquireBusy()
 
 	for atomic.LoadInt64(&conn.n) > 0 {
@@ -383,7 +387,8 @@ func (conn *Conn) Close(b string) error {
 		bb = s2b(b)
 	}
 
-	err := conn.sendClose(bb)
+	var err error
+	err = conn.sendClose(StatusNone, bb) // TODO: Edit status code
 	conn.releaseBusy()
 	if err == nil {
 		fr, err = conn.NextFrame()

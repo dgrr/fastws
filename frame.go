@@ -190,7 +190,8 @@ func (fr *Frame) MaskKey() []byte {
 
 func (fr *Frame) parseStatus() {
 	copy(fr.status[:2], fr.payload[:2])
-	fr.payload = append(fr.payload[:0], fr.payload[2:]...)
+	n := len(fr.payload)
+	fr.payload = append(fr.payload[:0], fr.payload[n:]...)
 }
 
 // Payload returns Frame payload.
@@ -351,13 +352,13 @@ func (fr *Frame) WriteTo(wr io.Writer) (n uint64, err error) {
 			n += uint64(nn)
 			ln := fr.Len()
 			// writing status
-			if fr.hasStatus() {
+			if ln > 0 && fr.hasStatus() {
 				ln -= 2
 				nn, err = wr.Write(fr.status[:2])
 				n += uint64(nn)
 			}
 			// writing payload
-			if err == nil && ln > 0 {
+			if ln > 0 && err == nil {
 				nn, err = wr.Write(fr.payload[:ln])
 				n += uint64(nn)
 			}
@@ -398,6 +399,8 @@ func (fr *Frame) SetStatus(status StatusCode) {
 	binary.BigEndian.PutUint16(fr.status[:2], uint16(status))
 }
 
+// mustRead returns the bytes to be readed to decode the length
+// of the payload.
 func (fr *Frame) mustRead() (n int) {
 	n = int(fr.raw[1] & 127)
 	switch n {
