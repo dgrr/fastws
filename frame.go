@@ -191,6 +191,9 @@ func (fr *Frame) MaskKey() []byte {
 func (fr *Frame) parseStatus() {
 	copy(fr.status[:2], fr.payload[:2])
 	n := len(fr.payload)
+	if n > 2 {
+		n = 2
+	}
 	fr.payload = append(fr.payload[:0], fr.payload[n:]...)
 }
 
@@ -338,7 +341,7 @@ func (fr *Frame) Unmask() {
 }
 
 func (fr *Frame) hasStatus() bool {
-	return fr.status[0] > 0 && fr.status[1] > 0
+	return fr.status[0] > 0 || fr.status[1] > 0
 }
 
 // WriteTo flushes Frame data into wr.
