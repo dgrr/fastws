@@ -55,7 +55,7 @@ func TestDial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.Close("")
+	conn.Close()
 	ln.Close()
 
 	select {

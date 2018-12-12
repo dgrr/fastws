@@ -40,14 +40,14 @@ func configureServer(t *testing.T) (*fasthttp.Server, *fasthttputil.InmemoryList
 				t.Fatal(err)
 			}
 
-			_, b, err = conn.ReadMessage(nil)
+			_, b, err = conn.ReadMessage(b[:0])
 			if err != nil {
 				t.Fatal(err)
 			}
 			if string(b) != "Hello world" {
 				t.Fatalf("%s <> Hello world", b)
 			}
-			conn.Close("Bye")
+			conn.CloseString("Bye")
 		}),
 	}
 	return s, ln
@@ -137,7 +137,7 @@ func TestReadFrame(t *testing.T) {
 	}
 	p := fr.Payload()
 	if string(p) != "Bye" {
-		t.Fatalf("Unexpected payload: %s <> Bye", p)
+		t.Fatalf("Unexpected payload: %v <> Bye", p)
 	}
 	if fr.Status() != StatusNone {
 		t.Fatalf("Status unexpected: %d <> %d", fr.Status(), StatusNone)
@@ -154,7 +154,7 @@ func TestReadFrame(t *testing.T) {
 func handleConcurrentRead(conn *Conn) (err error) {
 	var b []byte
 	for {
-		_, b, err = conn.ReadMessage(b)
+		_, b, err = conn.ReadMessage(b[:0])
 		if err != nil {
 			if err == EOF {
 				err = nil
@@ -214,7 +214,7 @@ func TestReadConcurrently(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	conn.Close("")
+	conn.Close()
 	s.Shutdown()
 	ln.Close()
 }

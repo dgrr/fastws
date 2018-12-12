@@ -162,7 +162,7 @@ func benchmarkFastServer(b *testing.B, clients, count int) {
 					b.Fatal(err)
 				}
 			}
-			conn.Close("")
+			conn.Close()
 		}),
 	}
 	ch := make(chan struct{}, 1)
