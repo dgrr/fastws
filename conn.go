@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -45,13 +44,11 @@ var (
 //
 // This handler is compatible with io.Reader, io.ReaderFrom, io.Writer, io.WriterTo
 type Conn struct {
-	n int64
 	c net.Conn
-
-	wpool sync.Pool
 
 	server   bool
 	compress bool
+	closing  bool
 
 	b   bool
 	cnd *sync.Cond
@@ -107,31 +104,59 @@ func releaseConn(conn *Conn) {
 	connPool.Put(conn)
 }
 
-func (conn *Conn) acquireWriter() (bw *bufferWriter) {
-	w := conn.wpool.Get()
-	if w == nil {
-		bw = &bufferWriter{
-			wr: conn.c,
-		}
-	} else {
-		bw = w.(*bufferWriter)
-		bw.Reset(conn.c)
-	}
-	return bw
-}
-
-func (conn *Conn) releaseWriter(bw *bufferWriter) {
-	conn.wpool.Put(bw)
-}
-
 // Reset resets conn values setting c as default connection endpoint.
 func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
-		conn.Close("")
+		conn.c.Close() // hard close
 	}
-	conn.n = 0
 	conn.MaxPayloadSize = maxPayloadSize
 	conn.c = c
+}
+
+func (conn *Conn) acquireBusy() {
+	conn.cnd.L.Lock()
+	for conn.b {
+		conn.cnd.Wait()
+	}
+	conn.b = true
+	conn.cnd.L.Unlock()
+}
+
+func (conn *Conn) releaseBusy() {
+	conn.cnd.L.Lock()
+	conn.b = false
+	conn.cnd.L.Unlock()
+	conn.cnd.Signal()
+}
+
+// WriteFrame writes fr to the connection endpoint.
+func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
+	if !conn.closing {
+		conn.acquireBusy()
+		defer conn.releaseBusy()
+	}
+	if conn.c == nil {
+		return 0, EOF
+	}
+	// TODO: Compress
+
+	nn, err := fr.WriteTo(conn.c)
+	return int(nn), err
+}
+
+// ReadFrame fills fr with the next connection frame.
+//
+// This function responds automatically to PING and PONG messages.
+func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
+	if !conn.closing {
+		conn.acquireBusy()
+		defer conn.releaseBusy()
+	}
+
+	var n uint64
+	n, err = fr.ReadFrom(conn.c) // read directly
+	nn = int(n)
+	return
 }
 
 // WriteString writes b to conn using conn.Mode as default.
@@ -153,7 +178,7 @@ func (conn *Conn) WriteMessage(mode Mode, b []byte) (int, error) {
 //
 // b is used to avoid extra allocations and can be nil.
 func (conn *Conn) ReadMessage(b []byte) (Mode, []byte, error) {
-	return conn.read(b[:0])
+	return conn.read(b)
 }
 
 // SendCodeString writes code, status and message to conn as SendCode does.
@@ -181,57 +206,6 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 	_, err := conn.WriteFrame(fr)
 	ReleaseFrame(fr)
 	return err
-}
-
-// WriteFrame writes fr to the connection endpoint.
-func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	if conn.c == nil {
-		return 0, EOF
-	}
-	atomic.AddInt64(&conn.n, 1)
-
-	// TODO: Compress
-
-	bw := conn.acquireWriter()
-	nn, err := fr.WriteTo(bw)
-	if err == nil {
-		err = bw.Flush()
-	}
-	conn.releaseWriter(bw)
-	atomic.AddInt64(&conn.n, -1)
-	return int(nn), err
-}
-
-func (conn *Conn) acquireBusy() {
-	conn.cnd.L.Lock()
-	for conn.b {
-		conn.cnd.Wait()
-	}
-	conn.b = true
-	conn.cnd.L.Unlock()
-}
-
-func (conn *Conn) releaseBusy() {
-	conn.cnd.L.Lock()
-	conn.b = false
-	conn.cnd.L.Unlock()
-	conn.cnd.Signal()
-}
-
-// ReadFrame fills fr with the next connection frame.
-//
-// This function responds automatically to PING and PONG messages.
-func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	conn.acquireBusy()
-	atomic.AddInt64(&conn.n, 1)
-
-	var n uint64
-	n, err = fr.ReadFrom(conn.c) // read directly
-	nn = int(n)
-
-	atomic.AddInt64(&conn.n, -1)
-	conn.releaseBusy()
-	return
 }
 
 // NextFrame reads next connection frame and returns if there were no error.
@@ -367,40 +341,42 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 	return
 }
 
-// Close sends b as close reason and closes the descriptor.
+// Close closes the websocket connection.
+func (conn *Conn) Close() error {
+	return conn.CloseString("")
+}
+
+// CloseString sends b as close reason and closes the descriptor.
 //
 // When connection is handled by server the connection is closed automatically.
-func (conn *Conn) Close(b string) error {
-	if conn.c == nil {
+func (conn *Conn) CloseString(b string) error {
+	conn.acquireBusy()
+	if conn.c == nil || conn.closing {
+		conn.releaseBusy()
 		return EOF
 	}
-	conn.acquireBusy()
-
-	for atomic.LoadInt64(&conn.n) > 0 {
-		time.Sleep(time.Millisecond * 20)
-	}
+	conn.closing = true
 
 	var bb []byte
+	var err error
 	var fr *Frame
 
 	if b != "" {
 		bb = s2b(b)
 	}
 
-	var err error
 	err = conn.sendClose(StatusNone, bb) // TODO: Edit status code
-	conn.releaseBusy()
 	if err == nil {
 		fr, err = conn.NextFrame()
-		if err == nil || err == EOF {
-			if fr != nil {
-				ReleaseFrame(fr)
-			}
+		if err == nil {
 			err = conn.c.Close()
 			if err == nil {
 				conn.c = nil
+				conn.closing = false
 			}
+			ReleaseFrame(fr)
 		}
 	}
+	conn.releaseBusy()
 	return err
 }
