@@ -50,8 +50,7 @@ type Conn struct {
 	compress bool
 	closing  bool
 
-	b   bool
-	cnd *sync.Cond
+	lbr, lbw locker // reader and writer locker
 
 	// Mode indicates Write default mode.
 	Mode Mode
@@ -92,9 +91,9 @@ func acquireConn(c net.Conn) (conn *Conn) {
 	if ci != nil {
 		conn = ci.(*Conn)
 	} else {
-		conn = &Conn{
-			cnd: sync.NewCond(&sync.Mutex{}),
-		}
+		conn = &Conn{}
+		conn.lbr.init()
+		conn.lbw.init()
 	}
 	conn.Reset(c)
 	return conn
@@ -113,27 +112,11 @@ func (conn *Conn) Reset(c net.Conn) {
 	conn.c = c
 }
 
-func (conn *Conn) acquireBusy() {
-	conn.cnd.L.Lock()
-	for conn.b {
-		conn.cnd.Wait()
-	}
-	conn.b = true
-	conn.cnd.L.Unlock()
-}
-
-func (conn *Conn) releaseBusy() {
-	conn.cnd.L.Lock()
-	conn.b = false
-	conn.cnd.L.Unlock()
-	conn.cnd.Signal()
-}
-
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	if !conn.closing {
-		conn.acquireBusy()
-		defer conn.releaseBusy()
+		conn.lbw.Lock()
+		defer conn.lbw.Unlock()
 	}
 	if conn.c == nil {
 		return 0, EOF
@@ -149,8 +132,8 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	if !conn.closing {
-		conn.acquireBusy()
-		defer conn.releaseBusy()
+		conn.lbr.Lock()
+		defer conn.lbr.Unlock()
 	}
 
 	var n uint64
@@ -350,9 +333,12 @@ func (conn *Conn) Close() error {
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) CloseString(b string) error {
-	conn.acquireBusy()
+	conn.lbw.Lock()
+	conn.lbr.Lock()
+	defer conn.lbw.Unlock()
+	defer conn.lbr.Unlock()
+
 	if conn.c == nil || conn.closing {
-		conn.releaseBusy()
 		return EOF
 	}
 	conn.closing = true
@@ -377,6 +363,5 @@ func (conn *Conn) CloseString(b string) error {
 			ReleaseFrame(fr)
 		}
 	}
-	conn.releaseBusy()
 	return err
 }
