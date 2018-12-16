@@ -48,9 +48,9 @@ type Conn struct {
 
 	server   bool
 	compress bool
-	closing  bool
+	closed   bool
 
-	lbr, lbw locker // reader and writer locker
+	lbr, lbw *locker // reader and writer locker
 
 	// Mode indicates Write default mode.
 	Mode Mode
@@ -91,9 +91,10 @@ func acquireConn(c net.Conn) (conn *Conn) {
 	if ci != nil {
 		conn = ci.(*Conn)
 	} else {
-		conn = &Conn{}
-		conn.lbr.init()
-		conn.lbw.init()
+		conn = &Conn{
+			lbr: newLocker(),
+			lbw: newLocker(),
+		}
 	}
 	conn.Reset(c)
 	return conn
@@ -114,11 +115,9 @@ func (conn *Conn) Reset(c net.Conn) {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	if !conn.closing {
-		conn.lbw.Lock()
-		defer conn.lbw.Unlock()
-	}
-	if conn.c == nil {
+	conn.lbw.Lock()
+	defer conn.lbw.Unlock()
+	if conn.c == nil || conn.closed {
 		return 0, EOF
 	}
 	// TODO: Compress
@@ -131,14 +130,16 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	if !conn.closing {
-		conn.lbr.Lock()
-		defer conn.lbr.Unlock()
-	}
+	conn.lbr.Lock()
+	defer conn.lbr.Unlock()
 
-	var n uint64
-	n, err = fr.ReadFrom(conn.c) // read directly
-	nn = int(n)
+	if conn.closed || conn.c == nil {
+		err = EOF
+	} else {
+		var n uint64
+		n, err = fr.ReadFrom(conn.c) // read directly
+		nn = int(n)
+	}
 	return
 }
 
@@ -305,7 +306,7 @@ func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	if !conn.server {
 		fr.Mask()
 	}
-	_, err = conn.WriteFrame(fr)
+	_, err = fr.WriteTo(conn.c)
 	ReleaseFrame(fr)
 	return
 }
@@ -338,14 +339,12 @@ func (conn *Conn) CloseString(b string) error {
 	defer conn.lbw.Unlock()
 	defer conn.lbr.Unlock()
 
-	if conn.c == nil || conn.closing {
+	if conn.closed || conn.c == nil {
 		return EOF
 	}
-	conn.closing = true
 
 	var bb []byte
 	var err error
-	var fr *Frame
 
 	if b != "" {
 		bb = s2b(b)
@@ -353,14 +352,9 @@ func (conn *Conn) CloseString(b string) error {
 
 	err = conn.sendClose(StatusNone, bb) // TODO: Edit status code
 	if err == nil {
-		fr, err = conn.NextFrame()
+		err = conn.c.Close()
 		if err == nil {
-			err = conn.c.Close()
-			if err == nil {
-				conn.c = nil
-				conn.closing = false
-			}
-			ReleaseFrame(fr)
+			conn.closed = true
 		}
 	}
 	return err

@@ -28,8 +28,6 @@ func (lck *locker) Lock() {
 }
 
 func (lck *locker) Unlock() {
-	lck.cnd.L.Lock()
 	lck.b = false
-	lck.cnd.L.Unlock()
 	lck.cnd.Signal()
 }
