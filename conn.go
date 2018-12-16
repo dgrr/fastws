@@ -110,6 +110,11 @@ func (conn *Conn) Reset(c net.Conn) {
 		conn.c.Close() // hard close
 	}
 	conn.MaxPayloadSize = maxPayloadSize
+	conn.lbr.Unlock()
+	conn.lbw.Unlock()
+	conn.compress = false
+	conn.server = false
+	conn.closed = false
 	conn.c = c
 }
 
