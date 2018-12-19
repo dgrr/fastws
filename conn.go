@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,6 +47,8 @@ var (
 type Conn struct {
 	c net.Conn
 
+	count int32
+
 	server   bool
 	compress bool
 	closed   bool
@@ -59,6 +62,20 @@ type Conn struct {
 	//
 	// By default MaxPayloadSize is 4096.
 	MaxPayloadSize uint64
+}
+
+func (conn *Conn) add() {
+	atomic.AddInt32(&conn.count, 1)
+}
+
+func (conn *Conn) done() {
+	atomic.AddInt32(&conn.count, -1)
+}
+
+func (conn *Conn) wait() {
+	for atomic.LoadInt32(&conn.count) > 0 {
+		time.Sleep(time.Millisecond * 20)
+	}
 }
 
 // LocalAddr returns local address.
@@ -120,8 +137,12 @@ func (conn *Conn) Reset(c net.Conn) {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
+	conn.add()
+	defer conn.done()
+
 	conn.lbw.Lock()
 	defer conn.lbw.Unlock()
+
 	if conn.c == nil || conn.closed {
 		return 0, EOF
 	}
@@ -135,6 +156,9 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
+	conn.add()
+	defer conn.done()
+
 	conn.lbr.Lock()
 	defer conn.lbr.Unlock()
 

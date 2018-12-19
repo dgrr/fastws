@@ -122,6 +122,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				upgr.Handler(conn)
 				// closes and release the connection
 				conn.Close()
+				conn.wait()
 				releaseConn(conn)
 			})
 		}
