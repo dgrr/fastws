@@ -18,7 +18,16 @@ var (
 // Client returns Conn using existing connection.
 //
 // url must be complete URL format i.e. http://localhost:8080/ws
-func Client(c net.Conn, url string) (conn *Conn, err error) {
+func Client(c net.Conn, url string) (*Conn, error) {
+	return client(c, url, nil)
+}
+
+// ClientWithHeaders returns a Conn using existing connection and sending personalized headers.
+func ClientWithHeaders(c net.Conn, url string, req *fasthttp.Request) (*Conn, error) {
+	return client(c, url, req)
+}
+
+func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error) {
 	req := fasthttp.AcquireRequest()
 	res := fasthttp.AcquireResponse()
 	uri := fasthttp.AcquireURI()
@@ -35,6 +44,10 @@ func Client(c net.Conn, url string) (conn *Conn, err error) {
 
 	origin = prepareOrigin(origin, uri)
 	key = makeRandKey(key[:0])
+
+	if r != nil {
+		r.CopyTo(req)
+	}
 
 	req.Header.SetMethod("GET")
 	req.Header.AddBytesKV(originString, origin)
@@ -66,7 +79,16 @@ func Client(c net.Conn, url string) (conn *Conn, err error) {
 // Dial performs establishes websocket connection as client.
 //
 // url parameter must follow WebSocket url format i.e. ws://host:port/path
-func Dial(url string) (conn *Conn, err error) {
+func Dial(url string) (*Conn, error) {
+	return dial(url, nil)
+}
+
+// DialWithHeaders establishes websocket connection as client sending personalized request.
+func DialWithHeaders(url string, req *fasthttp.Request) (*Conn, error) {
+	return dial(url, req)
+}
+
+func dial(url string, req *fasthttp.Request) (conn *Conn, err error) {
 	uri := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(uri)
 	uri.Update(url)
@@ -97,7 +119,7 @@ func Dial(url string) (conn *Conn, err error) {
 		})
 	}
 	if err == nil {
-		conn, err = Client(c, uri.String())
+		conn, err = client(c, uri.String(), req)
 		if err != nil {
 			c.Close()
 		}
