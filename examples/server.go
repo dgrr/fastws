@@ -21,6 +21,8 @@ func main() {
 	}
 	go server.ListenAndServe(":8080")
 
+	fmt.Println("Visit http://localhost:8080")
+
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt)
 	<-sigCh
