@@ -12,12 +12,21 @@ import (
 )
 
 // RequestHandler is the websocket handler.
-type RequestHandler func(conn *Conn)
+type (
+	RequestHandler func(conn *Conn)
+	UpgradeHandler func(*fasthttp.RequestCtx) bool
+)
 
 // Upgrader upgrades HTTP connection to a websocket connection if it's possible.
 //
 // Upgrader executes Upgrader.Handler after successful websocket upgrading.
 type Upgrader struct {
+	// UpgradeHandler allows user to handle RequestCtx when upgrading.
+	//
+	// If UpgradeHandler returns false the connection won't be upgraded and
+	// the parsed ctx will be used as a response.
+	UpgradeHandler UpgradeHandler
+
 	// Handler is the request handler for ws connections.
 	Handler RequestHandler
 
@@ -97,6 +106,12 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 			if !supported {
 				ctx.Error("Versions not supported", fasthttp.StatusBadRequest)
 				return
+			}
+
+			if upgr.UpgradeHandler != nil {
+				if !upgr.UpgradeHandler(ctx) {
+					return
+				}
 			}
 			// TODO: compression
 			//compress := mustCompress(exts)
