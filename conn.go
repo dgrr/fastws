@@ -381,9 +381,14 @@ func (conn *Conn) CloseString(b string) error {
 
 	err = conn.sendClose(StatusNone, bb) // TODO: Edit status code
 	if err == nil {
-		err = conn.c.Close()
+		fr := AcquireFrame()
+		_, err = fr.ReadFrom(conn.c)
+		ReleaseFrame(fr)
 		if err == nil {
-			conn.closed = true
+			err = conn.c.Close()
+			if err == nil {
+				conn.closed = true
+			}
 		}
 	}
 	return err
