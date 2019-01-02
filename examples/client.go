@@ -27,16 +27,16 @@ func main() {
 		conn.Write(msg)
 		time.Sleep(time.Second)
 	}
-	conn.Close("Bye")
+	conn.Close()
 }
 
 func echo(c *fastws.Conn) {
-	defer c.Close("Bye")
+	defer c.Close()
 
 	var msg []byte
 	var err error
 	for {
-		_, msg, err = c.ReadMessage(msg)
+		_, msg, err = c.ReadMessage(msg[:0])
 		if err != nil {
 			break
 		}
