@@ -80,10 +80,8 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 	// (This is not a fasthttp bug).
 	ctx.Response.Header.DisableNormalizing()
 
-	// Getting Connection header value.
-	hconn := ctx.Request.Header.PeekBytes(connectionString)
 	// Connection.Value == Upgrade
-	if bytes.Contains(hconn, upgradeString) {
+	if ctx.Request.Header.ConnectionUpgrade() {
 		// Peek upgrade header field.
 		hup := ctx.Request.Header.PeekBytes(upgradeString)
 		// Compare with websocket string defined by the RFC
