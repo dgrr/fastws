@@ -53,7 +53,7 @@ type Conn struct {
 	compress bool
 	closed   bool
 
-	lbr, lbw *locker // reader and writer locker
+	lbr, lbw sync.Mutex
 
 	// Mode indicates Write default mode.
 	Mode Mode
@@ -108,10 +108,7 @@ func acquireConn(c net.Conn) (conn *Conn) {
 	if ci != nil {
 		conn = ci.(*Conn)
 	} else {
-		conn = &Conn{
-			lbr: newLocker(),
-			lbw: newLocker(),
-		}
+		conn = &Conn{}
 	}
 	conn.Reset(c)
 	return conn
@@ -127,8 +124,6 @@ func (conn *Conn) Reset(c net.Conn) {
 		conn.c.Close() // hard close
 	}
 	conn.MaxPayloadSize = maxPayloadSize
-	conn.lbr.Unlock()
-	conn.lbw.Unlock()
 	conn.compress = false
 	conn.server = false
 	conn.closed = false
