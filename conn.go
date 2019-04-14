@@ -14,7 +14,8 @@ type StatusCode uint16
 // TODO: doc for status
 
 const (
-	StatusNone              StatusCode = 1000
+	StatusUndefined         StatusCode = 0
+	StatusNone                         = 1000
 	StatusGoAway                       = 1001
 	StatusProtocolError                = 1002
 	StatusNotAcceptable                = 1003
@@ -305,14 +306,13 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 			fr.Unmask()
 		}
 
-		b = append(b, fr.payload...)
+		b = append(b, fr.Payload()...)
 
 		if fr.IsFin() {
 			break
 		}
 
-		fr.resetHeader()
-		fr.resetPayload()
+		fr.Reset()
 	}
 	return fr.Mode(), b, err
 }
@@ -323,8 +323,13 @@ func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	fr.SetClose()
 	// If there is a body, the first two bytes of
 	// the body MUST be a 2-byte unsigned integer
+
+	if status == StatusUndefined {
+		status = StatusNone
+	}
+	fr.SetStatus(status)
+
 	if len(b) > 0 {
-		fr.SetStatus(status)
 		fr.SetPayload(b)
 	}
 	if !conn.server {
@@ -344,7 +349,6 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 	}
 	fr.SetFin()
 	fr.SetClose()
-	fr.parseStatus()
 	_, err = conn.WriteFrame(fr)
 	return
 }
