@@ -159,7 +159,7 @@ func benchmarkFastServer(b *testing.B, clients, count int) {
 					if err == io.EOF {
 						break
 					}
-					b.Fatal(err)
+					panic(err)
 				}
 			}
 			conn.Close()
@@ -219,7 +219,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err == io.EOF {
 				break
 			}
-			h.b.Fatal(err)
+			panic(err)
 		}
 	}
 	c.Close()
