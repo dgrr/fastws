@@ -160,7 +160,7 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	if conn.closed || conn.c == nil {
 		err = EOF
 	} else {
-		var n uint64
+		var n int64
 		n, err = fr.ReadFrom(conn.c) // read directly
 		nn = int(n)
 	}

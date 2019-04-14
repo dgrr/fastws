@@ -63,9 +63,8 @@ var framePool = sync.Pool{
 			status:  make([]byte, 2),
 			raw:     make([]byte, maxHeaderSize),
 			rawCopy: make([]byte, maxHeaderSize),
-			payload: make([]byte, maxPayloadSize),
+			payload: make([]byte, 0, 128),
 		}
-		fr.payload = fr.payload[:0]
 		return fr
 	},
 }
@@ -297,7 +296,6 @@ func (fr *Frame) SetPayload(b []byte) {
 }
 
 func (fr *Frame) setPayload(i int, b []byte) {
-	// TODO: Check max size
 	fr.payload = append(fr.payload[:i], b...)
 }
 
@@ -344,26 +342,26 @@ func (fr *Frame) hasStatus() bool {
 	return fr.status[0] > 0 || fr.status[1] > 0
 }
 
-// WriteTo flushes Frame data into wr.
-func (fr *Frame) WriteTo(wr io.Writer) (n uint64, err error) {
+// WriteTo marshals the frame and writes the frame into wr.
+func (fr *Frame) WriteTo(wr io.Writer) (n int64, err error) {
 	var nn int
 
 	err = fr.prepare()
 	if err == nil {
 		nn, err = wr.Write(fr.raw)
 		if err == nil {
-			n += uint64(nn)
+			n += int64(nn)
 			ln := fr.Len()
 			// writing status
 			if ln > 0 && fr.hasStatus() {
 				ln -= 2
 				nn, err = wr.Write(fr.status[:2])
-				n += uint64(nn)
+				n += int64(nn)
 			}
 			// writing payload
 			if ln > 0 && err == nil {
 				nn, err = wr.Write(fr.payload[:ln])
-				n += uint64(nn)
+				n += int64(nn)
 			}
 		}
 	}
@@ -445,7 +443,7 @@ var (
 // ReadFrom fills fr reading from rd.
 //
 // if rd == nil then ReadFrom returns EOF
-func (fr *Frame) ReadFrom(rd io.Reader) (nn uint64, err error) {
+func (fr *Frame) ReadFrom(rd io.Reader) (nn int64, err error) {
 	if rd == nil {
 		err = EOF
 	} else {
@@ -460,11 +458,11 @@ var (
 	errReadingMask   = errors.New("error reading mask")
 )
 
-func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
+func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 	var n, m int
-
 	fr.raw = fr.raw[:maxHeaderSize]
-	n, err = br.Read(fr.raw[:2])
+
+	n, err := br.Read(fr.raw[:2])
 	if err == nil && n < 2 {
 		err = errReadingHeader
 	}
@@ -487,21 +485,20 @@ func (fr *Frame) readFrom(br io.Reader) (nn uint64, err error) {
 			}
 		}
 		if err == nil { // reading payload
-			if fr.Len() > fr.max {
+			if nn := fr.Len(); fr.max > 0 && nn > fr.max {
 				err = fmt.Errorf("Max payload size exceeded (%d < %d)", fr.max, fr.Len())
-			} else {
-				nn = fr.Len()
-				if nn < 0 {
-					err = errNegativeLen
-				} else if nn > 0 {
-					fr.payload = fr.payload[:nn]
-					n, err = br.Read(fr.payload)
-					nn = uint64(n)
+			} else if nn > 0 {
+				// TODO: prevent int64(1<<64 - 1) conversion
+				if rLen := int64(nn) - int64(cap(fr.payload)); rLen > 0 {
+					fr.payload = append(fr.payload[:cap(fr.payload)], make([]byte, rLen)...)
+				}
+
+				n, err = br.Read(fr.payload[:nn])
+				if err == nil {
+					fr.payload = fr.payload[:n]
 				}
 			}
 		}
 	}
-	return
+	return int64(n), err
 }
-
-var errNegativeLen = errors.New("Negative len")
