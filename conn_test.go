@@ -16,36 +16,36 @@ func configureServer(t *testing.T) (*fasthttp.Server, *fasthttputil.InmemoryList
 		Handler: Upgrade(func(conn *Conn) {
 			m, b, err := conn.ReadMessage(nil)
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 			if m != ModeText {
-				t.Fatal("Unexpected code: Not ModeText")
+				panic("Unexpected code: Not ModeText")
 			}
 
 			if string(b) != "Hello" {
-				t.Fatalf("Unexpected message: %s<>Hello", b)
+				panic(fmt.Sprintf("Unexpected message: %s<>Hello", b))
 			}
 
 			conn.WriteString("Hello2")
 
 			fr, err := conn.NextFrame()
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 			if !fr.IsPing() {
-				t.Fatal("Unexpected message: no ping")
+				panic("Unexpected message: no ping")
 			}
 			err = conn.SendCode(CodePong, StatusNone, nil)
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 
 			_, b, err = conn.ReadMessage(b[:0])
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			}
 			if string(b) != "Hello world" {
-				t.Fatalf("%s <> Hello world", b)
+				panic(fmt.Sprintf("%s <> Hello world", b))
 			}
 			conn.CloseString("Bye")
 		}),
