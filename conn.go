@@ -42,6 +42,11 @@ var (
 	connPool sync.Pool
 )
 
+var (
+	zeroTime        = time.Time{}
+	defaultDeadline = time.Second * 5
+)
+
 // Conn represents websocket connection handler.
 //
 // This handler is compatible with io.Reader, io.ReaderFrom, io.Writer, io.WriterTo
@@ -58,6 +63,12 @@ type Conn struct {
 
 	// Mode indicates Write default mode.
 	Mode Mode
+
+	// ReadTimeout ...
+	ReadTimeout time.Duration
+
+	// WriteTimeout ...
+	WriteTimeout time.Duration
 
 	// MaxPayloadSize prevents huge memory allocation.
 	//
@@ -124,6 +135,8 @@ func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
 		conn.c.Close() // hard close
 	}
+	conn.ReadTimeout = defaultDeadline
+	conn.WriteTimeout = defaultDeadline
 	conn.MaxPayloadSize = maxPayloadSize
 	conn.compress = false
 	conn.server = false
@@ -144,7 +157,14 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	}
 	// TODO: Compress
 
+	if conn.WriteTimeout > 0 {
+		conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
+	}
+
 	nn, err := fr.WriteTo(conn.c)
+	if err == nil {
+		conn.c.SetWriteDeadline(zeroTime)
+	}
 	return int(nn), err
 }
 
@@ -162,8 +182,15 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 		err = EOF
 	} else {
 		var n int64
-		n, err = fr.ReadFrom(conn.c) // read directly
-		nn = int(n)
+		if conn.ReadTimeout > 0 {
+			conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
+		}
+
+		n, err = fr.ReadFrom(conn.c)
+		if err == nil {
+			nn = int(n)
+			conn.c.SetReadDeadline(zeroTime)
+		}
 	}
 	return
 }
@@ -386,17 +413,24 @@ func (conn *Conn) CloseString(b string) error {
 		bb = s2b(b)
 	}
 
+	conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
 	err = conn.sendClose(StatusNone, bb) // TODO: Edit status code
-	if err == nil {
+	if err != nil {
+		conn.c.SetWriteDeadline(zeroTime)
+	} else {
 		fr := AcquireFrame()
+		conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
+
 		_, err = fr.ReadFrom(conn.c)
-		ReleaseFrame(fr)
-		if err == nil {
+		if err != nil {
+			conn.c.SetReadDeadline(zeroTime)
+		} else {
 			err = conn.c.Close()
 			if err == nil {
 				conn.closed = true
 			}
 		}
+		ReleaseFrame(fr)
 	}
 	return err
 }
