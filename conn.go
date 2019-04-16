@@ -240,7 +240,7 @@ func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 
 	switch {
 	case fr.IsPing():
-		conn.SendCode(CodePong, 0, nil)
+		conn.SendCode(CodePong, 0, fr.Payload())
 		fr.Reset()
 		c = true
 	case fr.IsPong():
@@ -291,16 +291,9 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
+loop:
 	for {
 		_, err = conn.ReadFrame(fr)
-		if err != nil {
-			break
-		}
-		if err == nil {
-			if c, err = conn.checkRequirements(fr); c {
-				continue
-			}
-		}
 		if err != nil {
 			break
 		}
@@ -312,11 +305,23 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		b = append(b, fr.Payload()...)
 
 		if fr.IsFin() {
-			break
+			if err == nil {
+				if c, err = conn.checkRequirements(fr); c {
+					continue loop
+				}
+			}
+			break loop
 		}
 
 		fr.Reset()
 	}
+	if err == errLenTooBig {
+		nErr := sendClose(StatusTooBig, nil)
+		if nErr != nil {
+			err = fmt.Errorf("error closing connection due to %s: %s", err, nErr)
+		}
+	}
+
 	return fr.Mode(), b, err
 }
 
