@@ -401,6 +401,7 @@ var (
 	errReadingLen    = errors.New("error reading b length")
 	errReadingMask   = errors.New("error reading mask")
 	errLenTooBig     = errors.New("message length is too big than expected")
+	errStatusLen     = errors.New("length of the status must be = 2")
 )
 
 const limitLen = 1 << 32
@@ -434,20 +435,27 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 				isClose := fr.IsClose()
 				if isClose {
 					nn -= 2
+					if nn < 0 {
+						err = errStatusLen
+					}
 				}
+				if err == nil {
+					if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
+						fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
+					}
 
-				if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
-					fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
-				}
+					if isClose {
+						n, err = br.Read(fr.status[:2])
+						if n < 2 && err == nil {
+							err = errStatusLen
+						}
+					}
 
-				if isClose {
-					n, err = br.Read(fr.status[:2])
-				}
-
-				if err == nil && nn > 0 {
-					n, err = br.Read(fr.b[:nn])
-					if err == nil {
-						fr.b = fr.b[:n]
+					if err == nil && nn > 0 {
+						n, err = br.Read(fr.b[:nn])
+						if err == nil {
+							fr.b = fr.b[:n]
+						}
 					}
 				}
 			}

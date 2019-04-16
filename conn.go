@@ -342,8 +342,14 @@ loop:
 
 		fr.Reset()
 	}
-	if err == errLenTooBig {
-		nErr := conn.sendClose(StatusTooBig, nil)
+	if err != nil {
+		var nErr error
+		switch err {
+		case errLenTooBig:
+			nErr = conn.sendClose(StatusTooBig, nil)
+		case errStatusLen:
+			nErr = conn.sendClose(StatusNotConsistent, nil)
+		}
 		if nErr != nil {
 			err = fmt.Errorf("error closing connection due to %s: %s", err, nErr)
 		}
