@@ -3,7 +3,6 @@ package fastws
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 )
@@ -401,7 +400,10 @@ var (
 	errReadingHeader = errors.New("error reading frame header")
 	errReadingLen    = errors.New("error reading b length")
 	errReadingMask   = errors.New("error reading mask")
+	errLenTooBig     = errors.New("message length is too big than expected")
 )
+
+const limitLen = 1 << 32
 
 func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 	var n, m int
@@ -426,8 +428,8 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 		}
 		if err == nil { // reading b
 			fr.op[2] &= 127 // hot path to prevent overflow
-			if nn := fr.Len(); fr.max > 0 && nn > fr.max {
-				err = fmt.Errorf("Max b size exceeded (%d < %d)", fr.max, fr.Len())
+			if nn := fr.Len(); (fr.max > 0 && nn > fr.max) || nn > limitLen {
+				err = errLenTooBig
 			} else if nn > 0 {
 				isClose := fr.IsClose()
 				if isClose {
