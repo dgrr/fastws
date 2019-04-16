@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	maxHeaderSize  = 14
 	maxPayloadSize = uint64(4096)
 )
 

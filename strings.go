@@ -6,7 +6,7 @@ var (
 	originString        = []byte("Origin")
 	connectionString    = []byte("Connection")
 	upgradeString       = []byte("Upgrade")
-	websocketString     = []byte("websocket")
+	websocketString     = []byte("WebSocket")
 	commaString         = []byte(",")
 	wsHeaderVersion     = []byte("Sec-WebSocket-Version")
 	wsHeaderKey         = []byte("Sec-WebSocket-Key")
