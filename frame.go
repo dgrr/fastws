@@ -407,26 +407,45 @@ var (
 const limitLen = 1 << 32
 
 func (fr *Frame) readFrom(br io.Reader) (int64, error) {
-	var n, m int
+	var err error
+	var n, m, i int
 
-	n, err := br.Read(fr.op[:2])
-	if err == nil && n < 2 {
+	for i = 0; i < 2; i += n {
+		n, err = br.Read(fr.op[i:2])
+		if err != nil {
+			break
+		}
+	}
+	if i < 2 {
 		err = errReadingHeader
 	}
+
 	if err == nil {
 		m = fr.mustRead() + 2
 		if m > 2 { // reading length
-			n, err = br.Read(fr.op[2:m])
-			if n+2 < m {
+			for i = 2; i < m; i += n {
+				n, err = br.Read(fr.op[i:m])
+				if err != nil {
+					break
+				}
+			}
+			if i < m {
 				err = errReadingLen
 			}
 		}
+
 		if err == nil && fr.IsMasked() { // reading mask
-			m, err = br.Read(fr.mask[:4])
-			if m < 4 {
+			for i = 0; i < 4; i += n {
+				n, err = br.Read(fr.mask[i:4])
+				if err != nil {
+					break
+				}
+			}
+			if i < 4 {
 				err = errReadingMask
 			}
 		}
+
 		if err == nil { // reading b
 			fr.op[2] &= 127 // hot path to prevent overflow
 			if nn := fr.Len(); (fr.max > 0 && nn > fr.max) || nn > limitLen {
@@ -445,16 +464,24 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 					}
 
 					if isClose {
-						n, err = br.Read(fr.status[:2])
-						if n < 2 && err == nil {
+						for i = 0; i < 2; i += n {
+							n, err = br.Read(fr.status[i:2])
+							if err != nil {
+								break
+							}
+						}
+						if i < 2 {
 							err = errStatusLen
 						}
 					}
 
-					if err == nil && nn > 0 {
-						n, err = br.Read(fr.b[:nn])
-						if err == nil {
-							fr.b = fr.b[:n]
+					if err == nil {
+						fr.b = fr.b[:nn]
+						for i := uint64(0); i < nn; i += uint64(n) {
+							n, err = br.Read(fr.b[i:nn])
+							if err != nil {
+								break
+							}
 						}
 					}
 				}
