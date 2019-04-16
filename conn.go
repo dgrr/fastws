@@ -350,6 +350,11 @@ loop:
 			continue loop
 		}
 
+		if betweenContinue && !fr.IsContinuation() {
+			err = errFrameBetweenContinuation
+			break loop
+		}
+
 		if p := fr.Payload(); len(p) > 0 {
 			b = append(b, p...)
 		}
@@ -369,8 +374,8 @@ loop:
 			nErr = conn.sendClose(StatusTooBig, nil)
 		case errStatusLen:
 			nErr = conn.sendClose(StatusNotConsistent, nil)
-		case errControlMustNotBeFragmented:
-			nErr = conn.sendClose(StatusViolation, nil)
+		case errControlMustNotBeFragmented, errFrameBetweenContinuation:
+			nErr = conn.sendClose(StatusProtocolError, nil)
 		}
 		if nErr != nil {
 			err = fmt.Errorf("error closing connection due to %s: %s", err, nErr)
