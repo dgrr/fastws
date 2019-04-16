@@ -425,6 +425,7 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 			}
 		}
 		if err == nil { // reading b
+			fr.op[2] &= 127 // hot path to prevent overflow
 			if nn := fr.Len(); fr.max > 0 && nn > fr.max {
 				err = fmt.Errorf("Max b size exceeded (%d < %d)", fr.max, fr.Len())
 			} else if nn > 0 {
@@ -433,7 +434,6 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 					nn -= 2
 				}
 
-				// TODO: prevent int64(1<<64 - 1) conversion
 				if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
 					fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
 				}
