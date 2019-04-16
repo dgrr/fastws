@@ -223,6 +223,7 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	fr = AcquireFrame()
+	fr.SetPayloadSize(conn.MaxPayloadSize)
 	_, err = conn.ReadFrame(fr)
 	if err != nil {
 		ReleaseFrame(fr)
@@ -261,6 +262,7 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	}
 
 	fr := AcquireFrame()
+	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
 	fr.SetFin()
@@ -286,6 +288,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	var c bool
 	var err error
 	fr := AcquireFrame()
+	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
 	for {
