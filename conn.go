@@ -259,24 +259,35 @@ func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	return fr, err
 }
 
-func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
+func (conn *Conn) checkRequirements(fr *Frame, betweenContinuation bool) (c bool, err error) {
 	if !conn.server && fr.IsMasked() { // if server masked content
 		err = fmt.Errorf("Server sent masked content")
 		return
 	}
+	isFin := fr.IsFin()
 
 	switch {
 	case fr.IsPing():
-		conn.SendCode(CodePong, 0, fr.Payload())
-		fr.Reset()
-		c = true
+		if !isFin && !betweenContinuation {
+			err = errControlMustNotBeFragmented
+		} else {
+			err = conn.SendCode(CodePong, 0, fr.Payload())
+			c = true
+		}
 	case fr.IsPong():
-		fr.Reset()
-		c = true
+		if !isFin && !betweenContinuation {
+			err = errControlMustNotBeFragmented
+		} else {
+			c = true
+		}
 	case fr.IsClose():
-		err = conn.ReplyClose(fr)
-		if err == nil {
-			err = EOF
+		if !isFin && !betweenContinuation {
+			err = errControlMustNotBeFragmented
+		} else {
+			err = conn.ReplyClose(fr)
+			if err == nil {
+				err = EOF
+			}
 		}
 	}
 	return
@@ -314,40 +325,42 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 
 	var c bool
 	var err error
+	betweenContinue := false
 	fr := AcquireFrame()
 	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
 loop:
 	for {
+		fr.Reset()
+
 		_, err = conn.ReadFrame(fr)
 		if err != nil {
 			break
 		}
-
 		if fr.IsMasked() {
 			fr.Unmask()
+		}
+
+		c, err = conn.checkRequirements(fr, betweenContinue)
+		if err != nil {
+			break
+		}
+		if c {
+			continue loop
 		}
 
 		if p := fr.Payload(); len(p) > 0 {
 			b = append(b, p...)
 		}
 
-		if fr.IsFin() {
-			if err == nil {
-				if c, err = conn.checkRequirements(fr); c {
-					continue loop
-				}
-			}
+		if fr.IsFin() { // unfragmented message
 			break loop
 		}
 
-		if fr.IsPing() || fr.IsClose() || fr.IsPong() {
-			err = errControlMustNotBeFragmented
-			break loop
+		if !betweenContinue {
+			betweenContinue = true
 		}
-
-		fr.Reset()
 	}
 	if err != nil {
 		var nErr error
@@ -369,6 +382,7 @@ loop:
 
 var (
 	errControlMustNotBeFragmented = errors.New("control frames must not be fragmented")
+	errFrameBetweenContinuation   = errors.New("received frame with type != Continuation between continuation frames")
 )
 
 func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
