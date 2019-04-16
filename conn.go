@@ -329,7 +329,9 @@ loop:
 			fr.Unmask()
 		}
 
-		b = append(b, fr.Payload()...)
+		if p := fr.Payload(); len(p) > 0 {
+			b = append(b, p...)
+		}
 
 		if fr.IsFin() {
 			if err == nil {
@@ -337,6 +339,11 @@ loop:
 					continue loop
 				}
 			}
+			break loop
+		}
+
+		if fr.IsPing() || fr.IsClose() || fr.IsPong() {
+			err = errControlMustNotBeFragmented
 			break loop
 		}
 
@@ -349,6 +356,8 @@ loop:
 			nErr = conn.sendClose(StatusTooBig, nil)
 		case errStatusLen:
 			nErr = conn.sendClose(StatusNotConsistent, nil)
+		case errControlMustNotBeFragmented:
+			nErr = conn.sendClose(StatusViolation, nil)
 		}
 		if nErr != nil {
 			err = fmt.Errorf("error closing connection due to %s: %s", err, nErr)
@@ -357,6 +366,10 @@ loop:
 
 	return fr.Mode(), b, err
 }
+
+var (
+	errControlMustNotBeFragmented = errors.New("control frames must not be fragmented")
+)
 
 func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	fr := AcquireFrame()
