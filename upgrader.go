@@ -85,7 +85,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 		// Peek upgrade header field.
 		hup := ctx.Request.Header.PeekBytes(upgradeString)
 		// Compare with websocket string defined by the RFC
-		if bytes.Contains(hup, websocketString) {
+		if equalFold(hup, websocketString) {
 			// Checking websocket version
 			hversion := ctx.Request.Header.PeekBytes(wsHeaderVersion)
 			// Peeking websocket key.
