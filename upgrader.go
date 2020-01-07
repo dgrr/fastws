@@ -38,6 +38,8 @@ type Upgrader struct {
 
 	// Compress ...
 	Compress bool
+
+	Mode Mode
 }
 
 func prepareOrigin(b []byte, uri *fasthttp.URI) []byte {
@@ -85,7 +87,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 		// Peek upgrade header field.
 		hup := ctx.Request.Header.PeekBytes(upgradeString)
 		// Compare with websocket string defined by the RFC
-		if equalFold(hup, websocketString) {
+		if bytes.Contains(hup, websocketString) {
 			// Checking websocket version
 			hversion := ctx.Request.Header.PeekBytes(wsHeaderVersion)
 			// Peeking websocket key.
@@ -131,6 +133,7 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				// stablishing default options
 				conn.server = true
 				conn.compress = compress
+				conn.Mode = upgr.Mode
 				// executing handler
 				upgr.Handler(conn)
 				// closes and release the connection

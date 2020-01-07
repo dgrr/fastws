@@ -86,26 +86,22 @@ func checkValues(fr *Frame, t *testing.T, c, fin bool, payload []byte) {
 }
 
 func BenchmarkRead(b *testing.B) {
-	b.ReportAllocs()
+	var err error
+	var r = bytes.NewBuffer(littlePacket)
+	reader := bufio.NewReader(r)
 
-	b.RunParallel(func(pb *testing.PB) {
-		var err error
-		var r = bytes.NewBuffer(littlePacket)
-		reader := bufio.NewReader(r)
-
-		fr := AcquireFrame()
-		for pb.Next() {
-			_, err = fr.readFrom(reader)
-			if err != nil && err != io.EOF {
-				break
-			}
-			fr.Reset()
-			reader.Reset(r)
-			err = nil
+	fr := AcquireFrame()
+	for i := 0; i < b.N; i++ {
+		_, err = fr.readFrom(reader)
+		if err != nil && err != io.EOF {
+			break
 		}
-		if err != nil {
-			b.Fatal(err)
-		}
-		ReleaseFrame(fr)
-	})
+		fr.Reset()
+		reader.Reset(r)
+		err = nil
+	}
+	if err != nil {
+		b.Fatal(err)
+	}
+	ReleaseFrame(fr)
 }
