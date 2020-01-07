@@ -5,9 +5,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/dgrr/fasthttprouter"
-	"github.com/dgrr/fastws"
+	router "github.com/dgrr/fasthttprouter"
 	"github.com/valyala/fasthttp"
+
+	"github.com/dgrr/fastws"
 )
 
 func main() {
@@ -18,12 +19,12 @@ func main() {
 	}
 
 	// Configure router handler.
-	router := fasthttprouter.New()
-	router.GET("/set", setCookieHandler)
-	router.GET("/ws", upgr.Upgrade)
+	r := router.New()
+	r.GET("/set", setCookieHandler)
+	r.GET("/ws", upgr.Upgrade)
 
 	server := fasthttp.Server{
-		Handler: router.Handler,
+		Handler: r.Handler,
 	}
 	go server.ListenAndServe(":8080")
 

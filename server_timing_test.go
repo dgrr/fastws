@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/valyala/fasthttp"
 )
 
@@ -159,7 +158,7 @@ func benchmarkFastServer(b *testing.B, clients, count int) {
 					if err == io.EOF {
 						break
 					}
-					panic(err)
+					b.Fatal(err)
 				}
 			}
 			conn.Close()
@@ -202,6 +201,7 @@ func benchmarkGorillaServer(b *testing.B, clients, count int) {
 	}
 }
 
+/**
 var upgrader = websocket.Upgrader{}
 
 type handler struct {
@@ -219,12 +219,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err == io.EOF {
 				break
 			}
-			panic(err)
+			h.b.Fatal(err)
 		}
 	}
 	c.Close()
 }
 
+
+*/
 func Benchmark1000FastClientsPer10Messages(b *testing.B) {
 	benchmarkFastServer(b, 1000, 10)
 }

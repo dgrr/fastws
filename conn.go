@@ -14,8 +14,7 @@ type StatusCode uint16
 // TODO: doc for status
 
 const (
-	StatusUndefined         StatusCode = 0
-	StatusNone                         = 1000
+	StatusNone              StatusCode = 1000
 	StatusGoAway                       = 1001
 	StatusProtocolError                = 1002
 	StatusNotAcceptable                = 1003
@@ -42,11 +41,6 @@ var (
 	connPool sync.Pool
 )
 
-var (
-	zeroTime        = time.Time{}
-	defaultDeadline = time.Second * 5
-)
-
 // Conn represents websocket connection handler.
 //
 // This handler is compatible with io.Reader, io.ReaderFrom, io.Writer, io.WriterTo
@@ -59,16 +53,10 @@ type Conn struct {
 	compress bool
 	closed   bool
 
-	lbr, lbw sync.Mutex
+	lbr, lbw *locker // reader and writer locker
 
 	// Mode indicates Write default mode.
 	Mode Mode
-
-	// ReadTimeout ...
-	ReadTimeout time.Duration
-
-	// WriteTimeout ...
-	WriteTimeout time.Duration
 
 	// MaxPayloadSize prevents huge memory allocation.
 	//
@@ -120,7 +108,10 @@ func acquireConn(c net.Conn) (conn *Conn) {
 	if ci != nil {
 		conn = ci.(*Conn)
 	} else {
-		conn = &Conn{}
+		conn = &Conn{
+			lbr: newLocker(),
+			lbw: newLocker(),
+		}
 	}
 	conn.Reset(c)
 	return conn
@@ -135,9 +126,9 @@ func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
 		conn.c.Close() // hard close
 	}
-	conn.ReadTimeout = defaultDeadline
-	conn.WriteTimeout = defaultDeadline
 	conn.MaxPayloadSize = maxPayloadSize
+	conn.lbr.Unlock()
+	conn.lbw.Unlock()
 	conn.compress = false
 	conn.server = false
 	conn.closed = false
@@ -157,14 +148,7 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	}
 	// TODO: Compress
 
-	if conn.WriteTimeout > 0 {
-		conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
-	}
-
 	nn, err := fr.WriteTo(conn.c)
-	if err == nil {
-		conn.c.SetWriteDeadline(zeroTime)
-	}
 	return int(nn), err
 }
 
@@ -181,16 +165,9 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	if conn.closed || conn.c == nil {
 		err = EOF
 	} else {
-		var n int64
-		if conn.ReadTimeout > 0 {
-			conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
-		}
-
-		n, err = fr.ReadFrom(conn.c)
-		if err == nil {
-			nn = int(n)
-			conn.c.SetReadDeadline(zeroTime)
-		}
+		var n uint64
+		n, err = fr.ReadFrom(conn.c) // read directly
+		nn = int(n)
 	}
 	return
 }
@@ -250,7 +227,6 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	fr = AcquireFrame()
-	fr.SetPayloadSize(conn.MaxPayloadSize)
 	_, err = conn.ReadFrame(fr)
 	if err != nil {
 		ReleaseFrame(fr)
@@ -259,35 +235,24 @@ func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	return fr, err
 }
 
-func (conn *Conn) checkRequirements(fr *Frame, betweenContinuation bool) (c bool, err error) {
+func (conn *Conn) checkRequirements(fr *Frame) (c bool, err error) {
 	if !conn.server && fr.IsMasked() { // if server masked content
 		err = fmt.Errorf("Server sent masked content")
 		return
 	}
-	isFin := fr.IsFin()
 
 	switch {
 	case fr.IsPing():
-		if !isFin && !betweenContinuation {
-			err = errControlMustNotBeFragmented
-		} else {
-			err = conn.SendCode(CodePong, 0, fr.Payload())
-			c = true
-		}
+		conn.SendCode(CodePong, 0, nil)
+		fr.Reset()
+		c = true
 	case fr.IsPong():
-		if !isFin && !betweenContinuation {
-			err = errControlMustNotBeFragmented
-		} else {
-			c = true
-		}
+		fr.Reset()
+		c = true
 	case fr.IsClose():
-		if !isFin && !betweenContinuation {
-			err = errControlMustNotBeFragmented
-		} else {
-			err = conn.ReplyClose(fr)
-			if err == nil {
-				err = EOF
-			}
+		err = conn.ReplyClose(fr)
+		if err == nil {
+			err = EOF
 		}
 	}
 	return
@@ -300,7 +265,6 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	}
 
 	fr := AcquireFrame()
-	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
 	fr.SetFin()
@@ -325,70 +289,38 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 
 	var c bool
 	var err error
-	betweenContinue := false
 	fr := AcquireFrame()
-	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
-loop:
 	for {
-		fr.Reset()
-
 		_, err = conn.ReadFrame(fr)
 		if err != nil {
 			break
 		}
+		if err == nil {
+			if c, err = conn.checkRequirements(fr); c {
+				continue
+			}
+		}
+		if err != nil {
+			break
+		}
+
 		if fr.IsMasked() {
 			fr.Unmask()
 		}
 
-		c, err = conn.checkRequirements(fr, betweenContinue)
-		if err != nil {
+		b = append(b, fr.payload...)
+
+		if fr.IsFin() {
 			break
 		}
-		if c {
-			continue loop
-		}
 
-		if betweenContinue && !fr.IsContinuation() {
-			err = errFrameBetweenContinuation
-			break loop
-		}
-
-		if p := fr.Payload(); len(p) > 0 {
-			b = append(b, p...)
-		}
-
-		if fr.IsFin() { // unfragmented message
-			break loop
-		}
-
-		if !betweenContinue {
-			betweenContinue = true
-		}
+		fr.resetHeader()
+		fr.resetPayload()
 	}
-	if err != nil {
-		var nErr error
-		switch err {
-		case errLenTooBig:
-			nErr = conn.sendClose(StatusTooBig, nil)
-		case errStatusLen:
-			nErr = conn.sendClose(StatusNotConsistent, nil)
-		case errControlMustNotBeFragmented, errFrameBetweenContinuation:
-			nErr = conn.sendClose(StatusProtocolError, nil)
-		}
-		if nErr != nil {
-			err = fmt.Errorf("error closing connection due to %s: %s", err, nErr)
-		}
-	}
-
 	return fr.Mode(), b, err
 }
-
-var (
-	errControlMustNotBeFragmented = errors.New("control frames must not be fragmented")
-	errFrameBetweenContinuation   = errors.New("received frame with type != Continuation between continuation frames")
-)
 
 func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	fr := AcquireFrame()
@@ -396,13 +328,8 @@ func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	fr.SetClose()
 	// If there is a body, the first two bytes of
 	// the body MUST be a 2-byte unsigned integer
-
-	if status == StatusUndefined {
-		status = StatusNone
-	}
-	fr.SetStatus(status)
-
 	if len(b) > 0 {
+		fr.SetStatus(status)
 		fr.SetPayload(b)
 	}
 	if !conn.server {
@@ -422,6 +349,7 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 	}
 	fr.SetFin()
 	fr.SetClose()
+	fr.parseStatus()
 	_, err = conn.WriteFrame(fr)
 	return
 }
@@ -451,24 +379,17 @@ func (conn *Conn) CloseString(b string) error {
 		bb = s2b(b)
 	}
 
-	conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
 	err = conn.sendClose(StatusNone, bb) // TODO: Edit status code
-	if err != nil {
-		conn.c.SetWriteDeadline(zeroTime)
-	} else {
+	if err == nil {
 		fr := AcquireFrame()
-		conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
-
 		_, err = fr.ReadFrom(conn.c)
-		if err != nil {
-			conn.c.SetReadDeadline(zeroTime)
-		} else {
+		ReleaseFrame(fr)
+		if err == nil {
 			err = conn.c.Close()
 			if err == nil {
 				conn.closed = true
 			}
 		}
-		ReleaseFrame(fr)
 	}
 	return err
 }

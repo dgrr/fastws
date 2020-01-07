@@ -12,6 +12,17 @@ func Upgrade(handler RequestHandler) func(ctx *fasthttp.RequestCtx) {
 	upgr := Upgrader{
 		Handler:  handler,
 		Compress: true,
+		Mode:     ModeText,
+	}
+	return upgr.Upgrade
+}
+
+// UpgradeMode returns a RequestHandler via customized mode like ModeText / ModeBinary
+func UpgradeMode(handler RequestHandler, mode Mode) func(ctx *fasthttp.RequestCtx) {
+	upgr := Upgrader{
+		Handler:  handler,
+		Compress: true,
+		Mode:     mode,
 	}
 	return upgr.Upgrade
 }
