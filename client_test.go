@@ -2,6 +2,7 @@ package fastws
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,12 +24,17 @@ func TestDial(t *testing.T) {
 	upgr := Upgrader{
 		Origin: uri,
 		Handler: func(conn *Conn) {
-			_, b, err := conn.ReadMessage(nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(b, text) {
-				t.Fatalf("%s <> %s", b, text)
+			for {
+				_, b, err := conn.ReadMessage(nil)
+				if err != nil {
+					if err == EOF {
+						break
+					}
+					panic(err)
+				}
+				if !bytes.Equal(b, text) {
+					panic(fmt.Sprintf("%s <> %s", b, text))
+				}
 			}
 		},
 	}
@@ -55,6 +61,7 @@ func TestDial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	conn.Close()
 	ln.Close()
 

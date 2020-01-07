@@ -6,19 +6,18 @@ import (
 	"os/signal"
 	"time"
 
-	router "github.com/dgrr/fasthttprouter"
-	"github.com/valyala/fasthttp"
-
+	"github.com/buaazp/fasthttprouter"
 	"github.com/dgrr/fastws"
+	"github.com/valyala/fasthttp"
 )
 
 func main() {
-	r := router.New()
-	r.GET("/", rootHandler)
-	r.GET("/ws", fastws.Upgrade(wsHandler))
+	router := fasthttprouter.New()
+	router.GET("/", rootHandler)
+	router.GET("/ws", fastws.Upgrade(wsHandler))
 
 	server := fasthttp.Server{
-		Handler: r.Handler,
+		Handler: router.Handler,
 	}
 	go server.ListenAndServe(":8080")
 
