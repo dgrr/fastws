@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -53,12 +52,10 @@ var (
 type Conn struct {
 	c net.Conn
 
-	count int32
-
 	server   bool
 	compress bool
-	closed   bool
 
+	// mutex for reading and writing
 	lbr, lbw sync.Mutex
 
 	// Mode indicates Write default mode.
@@ -74,20 +71,6 @@ type Conn struct {
 	//
 	// By default MaxPayloadSize is 4096.
 	MaxPayloadSize uint64
-}
-
-func (conn *Conn) add() {
-	atomic.AddInt32(&conn.count, 1)
-}
-
-func (conn *Conn) done() {
-	atomic.AddInt32(&conn.count, -1)
-}
-
-func (conn *Conn) wait() {
-	for atomic.LoadInt32(&conn.count) > 0 {
-		time.Sleep(time.Millisecond * 20)
-	}
 }
 
 // LocalAddr returns local address.
@@ -140,19 +123,15 @@ func (conn *Conn) Reset(c net.Conn) {
 	conn.MaxPayloadSize = maxPayloadSize
 	conn.compress = false
 	conn.server = false
-	conn.closed = false
 	conn.c = c
 }
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	conn.add()
-	defer conn.done()
-
 	conn.lbw.Lock()
 	defer conn.lbw.Unlock()
 
-	if conn.c == nil || conn.closed {
+	if conn.c == nil {
 		return 0, EOF
 	}
 	// TODO: Compress
@@ -172,13 +151,10 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	conn.add()
-	defer conn.done()
-
 	conn.lbr.Lock()
 	defer conn.lbr.Unlock()
 
-	if conn.closed || conn.c == nil {
+	if conn.c == nil {
 		err = EOF
 	} else {
 		var n int64
@@ -289,7 +265,9 @@ func (conn *Conn) checkRequirements(fr *Frame, betweenContinuation bool) (c bool
 				err = EOF
 			}
 		}
+		c = false
 	}
+
 	return
 }
 
@@ -330,7 +308,6 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
-loop:
 	for {
 		fr.Reset()
 
@@ -347,12 +324,12 @@ loop:
 			break
 		}
 		if c {
-			continue loop
+			continue
 		}
 
-		if betweenContinue && !fr.IsContinuation() {
+		if betweenContinue && !fr.IsFin() && !fr.IsContinuation() && !fr.IsControl() {
 			err = errFrameBetweenContinuation
-			break loop
+			break
 		}
 
 		if p := fr.Payload(); len(p) > 0 {
@@ -360,12 +337,12 @@ loop:
 		}
 
 		if fr.IsFin() { // unfragmented message
-			break loop
+			betweenContinue = false
+			break
 		}
 
-		if !betweenContinue {
-			betweenContinue = true
-		}
+		// fragmented
+		betweenContinue = true
 	}
 	if err != nil {
 		var nErr error
@@ -440,7 +417,7 @@ func (conn *Conn) CloseString(b string) error {
 	defer conn.lbw.Unlock()
 	defer conn.lbr.Unlock()
 
-	if conn.closed || conn.c == nil {
+	if conn.c == nil {
 		return EOF
 	}
 
@@ -465,7 +442,7 @@ func (conn *Conn) CloseString(b string) error {
 		} else {
 			err = conn.c.Close()
 			if err == nil {
-				conn.closed = true
+				conn.c = nil
 			}
 		}
 		ReleaseFrame(fr)

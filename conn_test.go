@@ -110,7 +110,6 @@ func TestReadFrame(t *testing.T) {
 	fr.Reset()
 
 	fr.SetText()
-	fr.SetContinuation()
 	fr.SetPayload([]byte("Hello"))
 	fr.Mask()
 	_, err = conn.WriteFrame(fr)
@@ -119,7 +118,7 @@ func TestReadFrame(t *testing.T) {
 	}
 	fr.Reset()
 
-	fr.SetText()
+	fr.SetContinuation()
 	fr.SetFin()
 	fr.SetPayload([]byte(" world"))
 	fr.Mask()

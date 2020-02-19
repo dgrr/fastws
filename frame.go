@@ -136,7 +136,7 @@ func (fr *Frame) Mode() (mode Mode) {
 	return
 }
 
-// IsPong returns true if Code is CodePing.
+// IsPing returns true if Code is CodePing.
 func (fr *Frame) IsPing() bool {
 	return fr.Code() == CodePing
 }
@@ -146,6 +146,7 @@ func (fr *Frame) IsPong() bool {
 	return fr.Code() == CodePong
 }
 
+// IsContinuation returns true if the Frame code is Continuation
 func (fr *Frame) IsContinuation() bool {
 	return fr.Code() == CodeContinuation
 }
@@ -153,6 +154,11 @@ func (fr *Frame) IsContinuation() bool {
 // IsClose returns true if Code is CodeClose.
 func (fr *Frame) IsClose() bool {
 	return fr.Code() == CodeClose
+}
+
+// IsControl ...
+func (fr *Frame) IsControl() bool {
+	return fr.IsClose() || fr.IsPing() || fr.IsPong()
 }
 
 // IsMasked checks if Mask bit is set.
@@ -169,7 +175,8 @@ func (fr *Frame) Len() (length uint64) {
 	case 127:
 		length = binary.BigEndian.Uint64(fr.op[2:])
 	}
-	return length
+
+	return
 }
 
 // MaskKey returns mask key if exist.
@@ -180,6 +187,7 @@ func (fr *Frame) MaskKey() []byte {
 func (fr *Frame) parseStatus() {
 	n := len(fr.b)
 	if n >= 2 {
+		// copy the status from the payload to the fr.status
 		copy(fr.status, fr.b[:2])
 		fr.b = append(fr.b[:0], fr.b[2:]...)
 	}
@@ -238,7 +246,7 @@ func (fr *Frame) SetText() {
 	fr.SetCode(CodeText)
 }
 
-// SetText sets CodeText in Code field.
+// SetBinary sets CodeText in Code field.
 func (fr *Frame) SetBinary() {
 	fr.SetCode(CodeBinary)
 }
@@ -269,21 +277,23 @@ func (fr *Frame) UnsetMask() {
 	fr.op[1] ^= maskBit
 }
 
-// Write writes b to the frame b.
+// Write writes b to the frame's payload.
 func (fr *Frame) Write(b []byte) (int, error) {
 	n := len(b)
 	fr.b = append(fr.b, b...)
 	return n, nil
 }
 
-// SetPayload sets b to fr.
+// SetPayload sets b as the frame's payload.
 func (fr *Frame) SetPayload(b []byte) {
 	fr.b = append(fr.b[:0], b...)
 }
 
+// setPayloadLen returns the number of bytes the header will use
+// for sending out the payload's length.
 func (fr *Frame) setPayloadLen() (s int) {
 	n := len(fr.b)
-	if fr.hasStatus() {
+	if fr.hasStatus() { // status code is embed into the payload
 		n += 2
 	}
 	switch {
@@ -297,7 +307,9 @@ func (fr *Frame) setPayloadLen() (s int) {
 		binary.BigEndian.PutUint16(fr.op[2:], uint16(n))
 	default:
 		fr.setLength(n)
+		s = 0 // assumed but ok
 	}
+
 	return
 }
 
@@ -326,26 +338,38 @@ func (fr *Frame) hasStatus() bool {
 }
 
 // WriteTo marshals the frame and writes the frame into wr.
-func (fr *Frame) WriteTo(wr io.Writer) (int64, error) {
-	var err error
-	n := fr.setPayloadLen()
+func (fr *Frame) WriteTo(wr io.Writer) (n int64, err error) {
+	var ni int
+	s := fr.setPayloadLen()
 
-	n, err = wr.Write(fr.op[:n+2])
+	// +2 because we must include the
+	// first two bytes (stuff + opcode + mask + payload len)
+	ni, err = wr.Write(fr.op[:s+2])
 	if err == nil {
+		n += int64(ni)
 		if fr.IsMasked() {
-			n, err = wr.Write(fr.mask)
+			ni, err = wr.Write(fr.mask)
+			if ni > 0 {
+				n += int64(ni)
+			}
 		}
 		if err == nil {
 			if fr.hasStatus() {
-				n, err = wr.Write(fr.status)
+				ni, err = wr.Write(fr.status)
+				if ni > 0 {
+					n += int64(ni)
+				}
 			}
 			if err == nil {
-				n, err = wr.Write(fr.b)
+				ni, err = wr.Write(fr.b)
+				if ni > 0 {
+					n += int64(ni)
+				}
 			}
 		}
 	}
 
-	return int64(n), err
+	return
 }
 
 // Status returns StatusCode from request b.
@@ -363,8 +387,8 @@ func (fr *Frame) SetStatus(status StatusCode) {
 	binary.BigEndian.PutUint16(fr.status, uint16(status))
 }
 
-// mustRead returns the bytes to be readed to decode the length
-// of the b.
+// mustRead returns the number of bytes that must be
+// read to decode the length of the payload.
 func (fr *Frame) mustRead() (n int) {
 	n = int(fr.op[1] & 127)
 	switch n {
@@ -375,6 +399,7 @@ func (fr *Frame) mustRead() (n int) {
 	default:
 		n = 0
 	}
+
 	return
 }
 
@@ -393,6 +418,7 @@ func (fr *Frame) ReadFrom(rd io.Reader) (nn int64, err error) {
 	} else {
 		nn, err = fr.readFrom(rd)
 	}
+
 	return
 }
 
@@ -406,6 +432,7 @@ var (
 
 const limitLen = 1 << 32
 
+/*
 func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 	var err error
 	var n, m, i int
@@ -488,5 +515,69 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 			}
 		}
 	}
+	return int64(n), err
+}
+*/
+
+func (fr *Frame) readFrom(br io.Reader) (int64, error) {
+	var err error
+	var n, m int
+
+	// read the first 2 bytes (stuff + opcode + maskbit + payload len)
+	n, err = br.Read(fr.op[:2])
+	if n < 2 {
+		err = errReadingHeader
+	}
+	if err == nil {
+		// get how many bytes we should read to read the length
+		m = fr.mustRead() + 2
+		if m > 2 { // reading length
+			n, err = br.Read(fr.op[2:m]) // start from 2 to fill in 2:m
+			if err == nil && n < m-2 {
+				err = errReadingLen
+			}
+		}
+
+		if err == nil && fr.IsMasked() { // reading mask
+			n, err = br.Read(fr.mask[:4])
+			if err == nil && n < 4 {
+				err = errReadingMask
+			}
+		}
+
+		if err == nil {
+			// reading the payload
+			fr.op[2] &= 127 // quick fix to prevent overflow
+			if nn := fr.Len(); (fr.max > 0 && nn > fr.max) || nn > limitLen {
+				err = errLenTooBig
+			} else if nn > 0 {
+				isClose := fr.IsClose()
+				if isClose {
+					nn -= 2
+					if nn < 0 {
+						err = errStatusLen
+					}
+				}
+				if err == nil {
+					if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
+						fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
+					}
+
+					if isClose {
+						n, err = br.Read(fr.status[:2])
+						if err == nil && n < 2 {
+							err = errStatusLen
+						}
+					}
+
+					if err == nil {
+						fr.b = fr.b[:nn]
+						n, err = br.Read(fr.b[:nn])
+					}
+				}
+			}
+		}
+	}
+
 	return int64(n), err
 }
