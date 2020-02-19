@@ -337,7 +337,6 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		}
 
 		if fr.IsFin() { // unfragmented message
-			betweenContinue = false
 			break
 		}
 

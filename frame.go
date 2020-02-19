@@ -525,7 +525,7 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 
 	// read the first 2 bytes (stuff + opcode + maskbit + payload len)
 	n, err = br.Read(fr.op[:2])
-	if n < 2 {
+	if err == nil && n < 2 {
 		err = errReadingHeader
 	}
 	if err == nil {
