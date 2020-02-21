@@ -3,6 +3,7 @@ package fastws
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -50,6 +51,27 @@ type Frame struct {
 	mask   []byte
 	status []byte
 	b      []byte
+}
+
+func (fr *Frame) String() string {
+	return fmt.Sprintf(`FIN: %v
+RSV1: %v
+RSV2: %v
+RSV3: %v
+--------
+OPCODE: %d
+--------
+MASK: %v
+--------
+LENGTH: %d
+--------
+KEY: %v
+--------
+Data: %v`,
+		fr.IsFin(), fr.HasRSV1(), fr.HasRSV2(), fr.HasRSV3(),
+		fr.Code(), fr.IsMasked(), fr.Len(), fr.MaskKey(),
+		fr.Payload(),
+	)
 }
 
 var framePool = sync.Pool{
@@ -328,8 +350,10 @@ func (fr *Frame) Mask() {
 
 // Unmask unmasks Frame b.
 func (fr *Frame) Unmask() {
-	key := fr.MaskKey()
-	mask(key, fr.b)
+	if len(fr.b) > 0 {
+		key := fr.MaskKey()
+		mask(key, fr.b)
+	}
 	fr.UnsetMask()
 }
 
@@ -360,7 +384,7 @@ func (fr *Frame) WriteTo(wr io.Writer) (n int64, err error) {
 					n += int64(ni)
 				}
 			}
-			if err == nil {
+			if err == nil && len(fr.b) > 0 {
 				ni, err = wr.Write(fr.b)
 				if ni > 0 {
 					n += int64(ni)
@@ -426,7 +450,7 @@ var (
 	errReadingHeader = errors.New("error reading frame header")
 	errReadingLen    = errors.New("error reading b length")
 	errReadingMask   = errors.New("error reading mask")
-	errLenTooBig     = errors.New("message length is too big than expected")
+	errLenTooBig     = errors.New("message length is bigger than expected")
 	errStatusLen     = errors.New("length of the status must be = 2")
 )
 
@@ -519,28 +543,28 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 }
 */
 
-func (fr *Frame) readFrom(br io.Reader) (int64, error) {
+func (fr *Frame) readFrom(r io.Reader) (int64, error) {
 	var err error
 	var n, m int
 
 	// read the first 2 bytes (stuff + opcode + maskbit + payload len)
-	n, err = br.Read(fr.op[:2])
-	if err == nil && n < 2 {
+	n, err = io.ReadFull(r, fr.op[:2])
+	if err == io.ErrUnexpectedEOF {
 		err = errReadingHeader
 	}
 	if err == nil {
 		// get how many bytes we should read to read the length
 		m = fr.mustRead() + 2
 		if m > 2 { // reading length
-			n, err = br.Read(fr.op[2:m]) // start from 2 to fill in 2:m
-			if err == nil && n < m-2 {
+			n, err = io.ReadFull(r, fr.op[2:m]) // start from 2 to fill in 2:m
+			if err == io.ErrUnexpectedEOF {
 				err = errReadingLen
 			}
 		}
 
 		if err == nil && fr.IsMasked() { // reading mask
-			n, err = br.Read(fr.mask[:4])
-			if err == nil && n < 4 {
+			n, err = io.ReadFull(r, fr.mask[:4])
+			if err == io.ErrUnexpectedEOF {
 				err = errReadingMask
 			}
 		}
@@ -558,21 +582,22 @@ func (fr *Frame) readFrom(br io.Reader) (int64, error) {
 						err = errStatusLen
 					}
 				}
+
 				if err == nil {
 					if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
 						fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
 					}
 
 					if isClose {
-						n, err = br.Read(fr.status[:2])
-						if err == nil && n < 2 {
+						n, err = io.ReadFull(r, fr.status[:2])
+						if err == io.ErrUnexpectedEOF {
 							err = errStatusLen
 						}
 					}
 
 					if err == nil {
 						fr.b = fr.b[:nn]
-						n, err = br.Read(fr.b[:nn])
+						n, err = io.ReadFull(r, fr.b)
 					}
 				}
 			}

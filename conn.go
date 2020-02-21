@@ -43,7 +43,7 @@ var (
 
 var (
 	zeroTime        = time.Time{}
-	defaultDeadline = time.Second * 5
+	defaultDeadline = time.Second * 8
 )
 
 // Conn represents websocket connection handler.
@@ -136,6 +136,7 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	}
 	// TODO: Compress
 
+	fr.SetPayloadSize(conn.MaxPayloadSize)
 	if conn.WriteTimeout > 0 {
 		conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
 	}
@@ -162,12 +163,15 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 			conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
 		}
 
+		fr.SetPayloadSize(conn.MaxPayloadSize)
+
 		n, err = fr.ReadFrom(conn.c)
 		if err == nil {
 			nn = int(n)
 			conn.c.SetReadDeadline(zeroTime)
 		}
 	}
+
 	return
 }
 
@@ -217,6 +221,7 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 	}
 	_, err := conn.WriteFrame(fr)
 	ReleaseFrame(fr)
+
 	return err
 }
 
@@ -226,7 +231,6 @@ func (conn *Conn) SendCode(code Code, status StatusCode, b []byte) error {
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) NextFrame() (fr *Frame, err error) {
 	fr = AcquireFrame()
-	fr.SetPayloadSize(conn.MaxPayloadSize)
 	_, err = conn.ReadFrame(fr)
 	if err != nil {
 		ReleaseFrame(fr)
@@ -278,7 +282,6 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	}
 
 	fr := AcquireFrame()
-	fr.SetPayloadSize(conn.MaxPayloadSize)
 	defer ReleaseFrame(fr)
 
 	fr.SetFin()
@@ -301,12 +304,20 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		return 0, b, EOF
 	}
 
+	var err error
+	fr := AcquireFrame()
+	defer ReleaseFrame(fr)
+
+	b, err = conn.ReadFull(b, fr)
+
+	return fr.Mode(), b, err
+}
+
+// ReadFull ...
+func (conn *Conn) ReadFull(b []byte, fr *Frame) ([]byte, error) {
 	var c bool
 	var err error
 	betweenContinue := false
-	fr := AcquireFrame()
-	fr.SetPayloadSize(conn.MaxPayloadSize)
-	defer ReleaseFrame(fr)
 
 	for {
 		fr.Reset()
@@ -328,7 +339,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		}
 
 		if betweenContinue && !fr.IsFin() && !fr.IsContinuation() && !fr.IsControl() {
-			err = errFrameBetweenContinuation
+			err = fmt.Errorf("%s. Got %d", errFrameBetweenContinuation, fr.Code())
 			break
 		}
 
@@ -358,12 +369,12 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 		}
 	}
 
-	return fr.Mode(), b, err
+	return b, err
 }
 
 var (
 	errControlMustNotBeFragmented = errors.New("control frames must not be fragmented")
-	errFrameBetweenContinuation   = errors.New("received frame with type != Continuation between continuation frames")
+	errFrameBetweenContinuation   = errors.New("received frame between continuation frames")
 )
 
 func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
