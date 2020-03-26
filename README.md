@@ -90,7 +90,7 @@ conn.WriteString("Hello")
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)|
 | --------------------------------------- |:--------------:| ------------:|
 | Concurrent R/W                          | Yes            | No           |
-| Passes Autobahn Test Suite              | On development | Yes          |
+| Passes Autobahn Test Suite              | Mostly         | Yes          |
 | Receive fragmented message              | Yes            | Yes          |
 | Send close message                      | Yes            | Yes          |
 | Send pings and receive pongs            | Yes            | Yes          |
