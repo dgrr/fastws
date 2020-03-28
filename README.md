@@ -104,24 +104,36 @@ conn.WriteString("Hello")
 Fastws:
 
 ```
-$ go test -v -bench=Fast -benchmem -benchtime=10s
-Benchmark1000FastClientsPer10Messages-2         50000000               317 ns/op               0 B/op          0 allocs/op
-Benchmark1000FastClientsPer100Messages-2        500000000               36.7 ns/op             0 B/op          0 allocs/op
-Benchmark1000FastClientsPer1000Messages-2       5000000000               3.63 ns/op            0 B/op          0 allocs/op
-Benchmark100FastMsgsPerConn-2                   500000000               38.2 ns/op             0 B/op          0 allocs/op
-Benchmark1000FastMsgsPerConn-2                  5000000000               3.67 ns/op            0 B/op          0 allocs/op
-Benchmark10000FastMsgsPerConn-2                 10000000000              0.47 ns/op            0 B/op          0 allocs/op
-Benchmark100000FastMsgsPerConn-2                10000000000              0.03 ns/op            0 B/op          0 allocs/op
+$ go test -bench=Fast -benchmem -benchtime=10s
+Benchmark1000FastClientsPer10Messages-8       241524494         49.5 ns/op         0 B/op        0 allocs/op
+Benchmark1000FastClientsPer100Messages-8      1000000000           5.23 ns/op        0 B/op        0 allocs/op
+Benchmark1000FastClientsPer1000Messages-8     1000000000           0.545 ns/op         0 B/op        0 allocs/op
+Benchmark100FastMsgsPerConn-8                 1000000000           7.02 ns/op        0 B/op        0 allocs/op
+Benchmark1000FastMsgsPerConn-8                1000000000           0.692 ns/op         0 B/op        0 allocs/op
+Benchmark10000FastMsgsPerConn-8               1000000000           0.0817 ns/op        0 B/op        0 allocs/op
+Benchmark100000FastMsgsPerConn-8              1000000000           0.0186 ns/op        0 B/op        0 allocs/op
 ```
 
 Gorilla:
 ```
-$ go test -v -bench=Gorilla -benchmem -benchtime=10s
-Benchmark1000GorillaClientsPer10Messages-2      20000000               813 ns/op              86 B/op          1 allocs/op
-Benchmark1000GorillaClientsPer100Messages-2     200000000               75.4 ns/op             8 B/op          0 allocs/op
-Benchmark1000GorillaClientsPer1000Messages-2    2000000000               7.54 ns/op            0 B/op          0 allocs/op
-Benchmark100GorillaMsgsPerConn-2                200000000               85.0 ns/op             8 B/op          0 allocs/op
-Benchmark1000GorillaMsgsPerConn-2               2000000000               8.12 ns/op            0 B/op          0 allocs/op
-Benchmark10000GorillaMsgsPerConn-2              10000000000              0.84 ns/op            0 B/op          0 allocs/op
-Benchmark100000GorillaMsgsPerConn-2             10000000000              0.08 ns/op            0 B/op          0 allocs/op
+$ go test -bench=Gorilla -benchmem -benchtime=10s
+Benchmark1000GorillaClientsPer10Messages-8      128621386         97.5 ns/op        86 B/op        1 allocs/op
+Benchmark1000GorillaClientsPer100Messages-8     1000000000          11.0 ns/op         8 B/op        0 allocs/op
+Benchmark1000GorillaClientsPer1000Messages-8    1000000000           1.12 ns/op        0 B/op        0 allocs/op
+Benchmark100GorillaMsgsPerConn-8                849490059         14.0 ns/op         8 B/op        0 allocs/op
+Benchmark1000GorillaMsgsPerConn-8               1000000000           1.42 ns/op        0 B/op        0 allocs/op
+Benchmark10000GorillaMsgsPerConn-8              1000000000           0.143 ns/op         0 B/op        0 allocs/op
+Benchmark100000GorillaMsgsPerConn-8             1000000000           0.0252 ns/op        0 B/op        0 allocs/op
+```
+
+Nhooyr:
+```
+$ go test -bench=Nhooyr -benchmem -benchtime=10s
+Benchmark1000NhooyrClientsPer10Messages-8       121254158        114 ns/op        87 B/op        1 allocs/op
+Benchmark1000NhooyrClientsPer100Messages-8      1000000000          11.1 ns/op         8 B/op        0 allocs/op
+Benchmark1000NhooyrClientsPer1000Messages-8     1000000000           1.19 ns/op        0 B/op        0 allocs/op
+Benchmark100NhooyrMsgsPerConn-8                 845071632         15.1 ns/op         8 B/op        0 allocs/op
+Benchmark1000NhooyrMsgsPerConn-8                1000000000           1.47 ns/op        0 B/op        0 allocs/op
+Benchmark10000NhooyrMsgsPerConn-8               1000000000           0.157 ns/op         0 B/op        0 allocs/op
+Benchmark100000NhooyrMsgsPerConn-8              1000000000           0.0251 ns/op        0 B/op        0 allocs/op
 ```

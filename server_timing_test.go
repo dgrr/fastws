@@ -1,6 +1,7 @@
 package fastws
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/valyala/fasthttp"
+	nyws "nhooyr.io/websocket"
 )
 
 type fakeServerConn struct {
@@ -211,6 +213,7 @@ type handler struct {
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		h.b.Fatal(err)
 		return
 	}
 	for {
@@ -223,6 +226,54 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	c.Close()
+}
+
+type handlerNhooyr struct {
+	b *testing.B
+}
+
+func (h *handlerNhooyr) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c, err := nyws.Accept(w, r, &nyws.AcceptOptions{
+		CompressionMode: nyws.CompressionDisabled, // disable compression to be fair
+	})
+	if err != nil {
+		h.b.Fatal(err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	defer cancel()
+
+	for {
+		_, _, err := c.Read(ctx)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
+	}
+	c.Close(nyws.StatusNormalClosure, "")
+}
+
+func benchmarkNhooyrServer(b *testing.B, clients, count int) {
+	s := http.Server{
+		Handler: &handlerNhooyr{b},
+	}
+	ch := make(chan struct{}, 1)
+	ln := newFakeListener(b.N, clients, count, buildUpgrade())
+
+	go func() {
+		s.Serve(ln)
+		ch <- struct{}{}
+	}()
+
+	<-ln.done
+	select {
+	case <-ch:
+	case <-time.After(time.Second * 10):
+		b.Fatal("timeout")
+	}
 }
 
 func Benchmark1000FastClientsPer10Messages(b *testing.B) {
@@ -247,6 +298,18 @@ func Benchmark1000GorillaClientsPer100Messages(b *testing.B) {
 
 func Benchmark1000GorillaClientsPer1000Messages(b *testing.B) {
 	benchmarkGorillaServer(b, 1000, 1000)
+}
+
+func Benchmark1000NhooyrClientsPer10Messages(b *testing.B) {
+	benchmarkNhooyrServer(b, 1000, 10)
+}
+
+func Benchmark1000NhooyrClientsPer100Messages(b *testing.B) {
+	benchmarkNhooyrServer(b, 1000, 100)
+}
+
+func Benchmark1000NhooyrClientsPer1000Messages(b *testing.B) {
+	benchmarkNhooyrServer(b, 1000, 1000)
 }
 
 func Benchmark100FastMsgsPerConn(b *testing.B) {
@@ -279,4 +342,20 @@ func Benchmark10000GorillaMsgsPerConn(b *testing.B) {
 
 func Benchmark100000GorillaMsgsPerConn(b *testing.B) {
 	benchmarkGorillaServer(b, runtime.NumCPU(), 100000)
+}
+
+func Benchmark100NhooyrMsgsPerConn(b *testing.B) {
+	benchmarkNhooyrServer(b, runtime.NumCPU(), 100)
+}
+
+func Benchmark1000NhooyrMsgsPerConn(b *testing.B) {
+	benchmarkNhooyrServer(b, runtime.NumCPU(), 1000)
+}
+
+func Benchmark10000NhooyrMsgsPerConn(b *testing.B) {
+	benchmarkNhooyrServer(b, runtime.NumCPU(), 10000)
+}
+
+func Benchmark100000NhooyrMsgsPerConn(b *testing.B) {
+	benchmarkNhooyrServer(b, runtime.NumCPU(), 100000)
 }
