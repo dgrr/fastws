@@ -105,13 +105,13 @@ Fastws:
 
 ```
 $ go test -bench=Fast -benchmem -benchtime=10s
-Benchmark1000FastClientsPer10Messages-8       241524494         49.5 ns/op         0 B/op        0 allocs/op
-Benchmark1000FastClientsPer100Messages-8      1000000000           5.23 ns/op        0 B/op        0 allocs/op
-Benchmark1000FastClientsPer1000Messages-8     1000000000           0.545 ns/op         0 B/op        0 allocs/op
-Benchmark100FastMsgsPerConn-8                 1000000000           7.02 ns/op        0 B/op        0 allocs/op
-Benchmark1000FastMsgsPerConn-8                1000000000           0.692 ns/op         0 B/op        0 allocs/op
-Benchmark10000FastMsgsPerConn-8               1000000000           0.0817 ns/op        0 B/op        0 allocs/op
-Benchmark100000FastMsgsPerConn-8              1000000000           0.0186 ns/op        0 B/op        0 allocs/op
+enchmark1000FastClientsPer10Messages-8         226068555               54.1 ns/op             0 B/op          0 allocs/op
+Benchmark1000FastClientsPer100Messages-8        1000000000               5.91 ns/op            0 B/op          0 allocs/op
+Benchmark1000FastClientsPer1000Messages-8       1000000000               0.576 ns/op           0 B/op          0 allocs/op
+Benchmark100FastMsgsPerConn-8                   1000000000               8.34 ns/op            0 B/op          0 allocs/op
+Benchmark1000FastMsgsPerConn-8                  1000000000               0.893 ns/op           0 B/op          0 allocs/op
+Benchmark10000FastMsgsPerConn-8                 1000000000               0.0954 ns/op          0 B/op          0 allocs/op
+Benchmark100000FastMsgsPerConn-8                1000000000               0.0197 ns/op          0 B/op          0 allocs/op
 ```
 
 Gorilla:

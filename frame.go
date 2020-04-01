@@ -53,6 +53,15 @@ type Frame struct {
 	b      []byte
 }
 
+// CopyTo copies the frame `fr` to `fr2`
+func (fr *Frame) CopyTo(fr2 *Frame) {
+	fr2.max = fr.max
+	fr2.op = append(fr2.op[:0], fr.op...)
+	fr2.mask = append(fr2.mask[:0], fr.mask...)
+	fr2.status = append(fr2.status[:0], fr.status...)
+	fr2.b = append(fr2.b[:0], fr.b...)
+}
+
 func (fr *Frame) String() string {
 	return fmt.Sprintf(`FIN: %v
 RSV1: %v

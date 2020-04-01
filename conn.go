@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -52,11 +53,15 @@ var (
 type Conn struct {
 	c net.Conn
 
+	framer chan *Frame
+	errch  chan error
+	closer chan struct{}
+
 	server   bool
 	compress bool
 
 	// mutex for reading and writing
-	lbr, lbw sync.Mutex
+	lck, lbw sync.Mutex
 
 	// Mode indicates Write default mode.
 	Mode Mode
@@ -118,12 +123,46 @@ func (conn *Conn) Reset(c net.Conn) {
 	if conn.c != nil {
 		conn.c.Close() // hard close
 	}
+	if conn.framer != nil {
+		close(conn.framer)
+	}
+	if conn.closer != nil {
+		close(conn.closer)
+	}
+	if conn.errch != nil {
+		close(conn.errch)
+	}
+	conn.framer = make(chan *Frame, 128)
+	conn.closer = make(chan struct{}, 1)
+	conn.errch = make(chan error, 128)
 	conn.ReadTimeout = defaultDeadline
 	conn.WriteTimeout = defaultDeadline
 	conn.MaxPayloadSize = maxPayloadSize
 	conn.compress = false
 	conn.server = false
 	conn.c = c
+	go conn.readLoop()
+}
+
+func (conn *Conn) readLoop() {
+	defer func() {
+		close(conn.framer)
+		conn.framer = nil
+	}()
+
+	for {
+		fr := AcquireFrame()
+		_, err := fr.ReadFrom(conn.c)
+		if err != nil {
+			if err != EOF ||
+				!strings.Contains(err.Error(), "use of closed") &&
+					conn.errch != nil {
+				conn.errch <- err
+			}
+			return
+		}
+		conn.framer <- fr
+	}
 }
 
 // WriteFrame writes fr to the connection endpoint.
@@ -131,9 +170,12 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	conn.lbw.Lock()
 	defer conn.lbw.Unlock()
 
+	conn.lck.Lock()
 	if conn.c == nil {
+		conn.lck.Unlock()
 		return 0, EOF
 	}
+	conn.lck.Unlock()
 	// TODO: Compress
 
 	fr.SetPayloadSize(conn.MaxPayloadSize)
@@ -152,23 +194,35 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	conn.lbr.Lock()
-	defer conn.lbr.Unlock()
-
+	conn.lck.Lock()
 	if conn.c == nil {
-		err = EOF
-	} else {
-		var n int64
-		if conn.ReadTimeout > 0 {
-			conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
-		}
+		conn.lck.Unlock()
+		return 0, EOF
+	}
+	conn.lck.Unlock()
 
-		fr.SetPayloadSize(conn.MaxPayloadSize)
+	timeout := conn.ReadTimeout
+	if timeout <= 0 {
+		timeout = time.Minute * 5
+	}
 
-		n, err = fr.ReadFrom(conn.c)
-		if err == nil {
-			nn = int(n)
-			conn.c.SetReadDeadline(zeroTime)
+	for nn == 0 && err == nil {
+		select {
+		case fr2, ok := <-conn.framer:
+			if !ok {
+				err = EOF
+			} else {
+				fr2.CopyTo(fr)
+				nn = int(fr.Len())
+				ReleaseFrame(fr2)
+			}
+		case err = <-conn.errch:
+		case <-time.After(timeout):
+			if timeout > 0 {
+				err = errors.New("i/o timeout")
+			}
+		case <-conn.closer:
+			err = EOF
 		}
 	}
 
@@ -277,10 +331,6 @@ func (conn *Conn) checkRequirements(fr *Frame, betweenContinuation bool) (c bool
 
 // TODO: Add timeout
 func (conn *Conn) write(mode Mode, b []byte) (int, error) {
-	if conn.c == nil {
-		return 0, EOF
-	}
-
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
 
@@ -300,10 +350,6 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 
 // TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
-	if conn.c == nil {
-		return 0, b, EOF
-	}
-
 	var err error
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
@@ -423,13 +469,27 @@ func (conn *Conn) Close() error {
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) CloseString(b string) error {
 	conn.lbw.Lock()
-	conn.lbr.Lock()
 	defer conn.lbw.Unlock()
-	defer conn.lbr.Unlock()
 
-	if conn.c == nil {
+	conn.lck.Lock()
+	if conn.c == nil || conn.closer == nil {
+		conn.lck.Unlock()
 		return EOF
 	}
+	// closing conn.closer here ensures the goroutines reading
+	// at ReadFrame will return io.EOF
+	close(conn.closer)
+	conn.closer = nil
+	conn.lck.Unlock()
+
+	defer func() {
+		conn.lck.Lock()
+		if conn.errch != nil {
+			close(conn.errch)
+			conn.errch = nil
+		}
+		conn.lck.Unlock()
+	}()
 
 	var bb []byte
 	var err error
@@ -443,19 +503,27 @@ func (conn *Conn) CloseString(b string) error {
 	if err != nil {
 		conn.c.SetWriteDeadline(zeroTime)
 	} else {
-		fr := AcquireFrame()
-		conn.c.SetReadDeadline(time.Now().Add(conn.ReadTimeout))
-
-		_, err = fr.ReadFrom(conn.c)
-		if err != nil {
-			conn.c.SetReadDeadline(zeroTime)
-		} else {
-			err = conn.c.Close()
-			if err == nil {
-				conn.c = nil
+		var fr *Frame
+	loop:
+		for {
+			var ok bool
+			select {
+			case fr, ok = <-conn.framer:
+				if !ok || fr.IsClose() { // read until the close frame
+					break loop
+				}
+				ReleaseFrame(fr)
+			case <-time.After(time.Second * 5):
+				break loop
 			}
 		}
-		ReleaseFrame(fr)
+
+		err = conn.c.Close()
+		conn.c = nil
+		if fr != nil {
+			ReleaseFrame(fr)
+		}
 	}
+
 	return err
 }

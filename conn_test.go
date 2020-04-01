@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -158,14 +159,15 @@ func handleConcurrentRead(conn *Conn) (err error) {
 			if err == EOF {
 				err = nil
 			}
-			return
+			return err
 		}
 		if string(b) != textToSend {
 			err = fmt.Errorf("%s <> %s", b, textToSend)
 			break
 		}
 	}
-	return
+
+	return err
 }
 
 var textToSend = "hello"
@@ -213,6 +215,31 @@ func TestReadConcurrently(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	conn.Close()
+	s.Shutdown()
+	ln.Close()
+}
+
+func TestCloseWhileReading(t *testing.T) {
+	ln := fasthttputil.NewInmemoryListener()
+	s := fasthttp.Server{
+		Handler: Upgrade(func(conn *Conn) {
+			go func() {
+				_, _, err := conn.ReadMessage(nil)
+				if err != nil {
+					if err == EOF {
+						return
+					}
+					panic(err)
+				}
+			}()
+			time.Sleep(time.Millisecond * 100)
+			conn.Close()
+		}),
+	}
+	go s.Serve(ln)
+
+	conn := openConn(t, ln)
 	conn.Close()
 	s.Shutdown()
 	ln.Close()
