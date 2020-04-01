@@ -88,16 +88,16 @@ conn.WriteString("Hello")
 # fastws vs gorilla.
 
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)| [Nhooyr](https://github.com/nhooyr/websocket)
-| --------------------------------------- |:--------------:| ------------:| ------------:|
-| Concurrent R/W                          | Yes            | No           | Yes          |
-| Passes Autobahn Test Suite              | Mostly         | Yes          | Yes          |
-| Receive fragmented message              | Yes            | Yes          | Yes          |
-| Send close message                      | Yes            | Yes          | Yes          |
-| Send pings and receive pongs            | Yes            | Yes          | Yes          |
-| Get the type of a received data message | Yes            | Yes          | Yes          |
-| Compression Extensions                  | On development | Experimental | Yes          |
-| Read message using io.Reader            | Non planned    | Yes          | No           |
-| Write message using io.WriteCloser      | Non planned    | Yes          | No           |
+| --------------------------------------- |:--------------:| ------------:| ---------------:|
+| Concurrent R/W                          | Yes            | No           | No. Only writes |
+| Passes Autobahn Test Suite              | Mostly         | Yes          | Yes             |
+| Receive fragmented message              | Yes            | Yes          | Yes             |
+| Send close message                      | Yes            | Yes          | Yes             |
+| Send pings and receive pongs            | Yes            | Yes          | Yes             |
+| Get the type of a received data message | Yes            | Yes          | Yes             |
+| Compression Extensions                  | On development | Experimental | Yes             |
+| Read message using io.Reader            | Non planned    | Yes          | No              |
+| Write message using io.WriteCloser      | Non planned    | Yes          | No              |
 
 # Benchmarks
 
