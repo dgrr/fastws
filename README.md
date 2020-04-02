@@ -9,6 +9,8 @@ See [examples](https://github.com/dgrr/fastws/blob/master/examples) to see how t
 Other websocket packages does not allow concurrent Read/Write operations
 and does not provide low level access to websocket packet crafting.
 
+To see a example of what this package CAN do that others NOT see [this](https://github.com/dgrr/fastws/blob/master/examples/concurrent_server.go) example.
+
 Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
 in production allowing low level access to the websocket frames.
