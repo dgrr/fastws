@@ -53,6 +53,7 @@ var (
 type Conn struct {
 	c      net.Conn
 	closed bool
+	wg     sync.WaitGroup
 
 	framer chan *Frame
 	errch  chan error
@@ -138,6 +139,8 @@ func (conn *Conn) Reset(c net.Conn) {
 }
 
 func (conn *Conn) readLoop() {
+	conn.wg.Add(1)
+	defer conn.wg.Done()
 	defer close(conn.framer)
 
 	for {
@@ -517,6 +520,7 @@ loop:
 		ReleaseFrame(fr)
 	}
 	conn.c.SetWriteDeadline(zeroTime)
+	conn.wg.Wait() // should return immediately after closing
 
 	return err
 }
