@@ -486,6 +486,7 @@ func (conn *Conn) CloseString(b string) error {
 
 	defer func() {
 		conn.lck.Lock()
+		conn.c = nil
 		if conn.errch != nil {
 			close(conn.errch)
 			conn.errch = nil
@@ -521,7 +522,6 @@ func (conn *Conn) CloseString(b string) error {
 		}
 
 		err = conn.c.Close()
-		conn.c = nil
 		if fr != nil {
 			ReleaseFrame(fr)
 		}
