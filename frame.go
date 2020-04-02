@@ -437,6 +437,7 @@ func (fr *Frame) mustRead() (n int) {
 }
 
 var (
+	// EOF represents an io.EOF error.
 	EOF                = io.EOF
 	errMalformedHeader = errors.New("Malformed header")
 	errBadHeaderSize   = errors.New("Header size is insufficient")
@@ -446,12 +447,7 @@ var (
 //
 // if rd == nil then ReadFrom returns EOF
 func (fr *Frame) ReadFrom(rd io.Reader) (nn int64, err error) {
-	if rd == nil {
-		err = EOF
-	} else {
-		nn, err = fr.readFrom(rd)
-	}
-
+	nn, err = fr.readFrom(rd)
 	return
 }
 
@@ -464,93 +460,6 @@ var (
 )
 
 const limitLen = 1 << 32
-
-/*
-func (fr *Frame) readFrom(br io.Reader) (int64, error) {
-	var err error
-	var n, m, i int
-
-	for i = 0; i < 2; i += n {
-		n, err = br.Read(fr.op[i:2])
-		if err != nil {
-			break
-		}
-	}
-	if i < 2 {
-		err = errReadingHeader
-	}
-
-	if err == nil {
-		m = fr.mustRead() + 2
-		if m > 2 { // reading length
-			for i = 2; i < m; i += n {
-				n, err = br.Read(fr.op[i:m])
-				if err != nil {
-					break
-				}
-			}
-			if i < m {
-				err = errReadingLen
-			}
-		}
-
-		if err == nil && fr.IsMasked() { // reading mask
-			for i = 0; i < 4; i += n {
-				n, err = br.Read(fr.mask[i:4])
-				if err != nil {
-					break
-				}
-			}
-			if i < 4 {
-				err = errReadingMask
-			}
-		}
-
-		if err == nil { // reading b
-			fr.op[2] &= 127 // hot path to prevent overflow
-			if nn := fr.Len(); (fr.max > 0 && nn > fr.max) || nn > limitLen {
-				err = errLenTooBig
-			} else if nn > 0 {
-				isClose := fr.IsClose()
-				if isClose {
-					nn -= 2
-					if nn < 0 {
-						err = errStatusLen
-					}
-				}
-				if err == nil {
-					if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
-						fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
-					}
-
-					if isClose {
-						for i = 0; i < 2; i += n {
-							n, err = br.Read(fr.status[i:2])
-							if err != nil {
-								break
-							}
-						}
-						if i < 2 {
-							err = errStatusLen
-						}
-					}
-
-					if err == nil {
-						fr.b = fr.b[:nn]
-						for i := uint64(0); i < nn; i += uint64(n) {
-							n, err = br.Read(fr.b[i:nn])
-							if err != nil {
-								break
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return int64(n), err
-}
-*/
 
 func (fr *Frame) readFrom(r io.Reader) (int64, error) {
 	var err error
