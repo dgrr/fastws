@@ -2,7 +2,7 @@
 
 Websocket library for [fasthttp](https://github.com/valyala/fasthttp).
 
-Checkout [examples](https://github.com/dgrr/fastws/blob/master/examples) to get inspiration.
+Checkout [examples](https://github.com/dgrr/fastws/blob/master/examples) to inspire yourself.
 
 # Why another websocket package?
 
