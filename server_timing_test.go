@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/wsutil"
 	"github.com/gorilla/websocket"
 	"github.com/valyala/fasthttp"
 	nyws "nhooyr.io/websocket"
@@ -276,6 +278,48 @@ func benchmarkNhooyrServer(b *testing.B, clients, count int) {
 	}
 }
 
+type handlerGobwas struct {
+	b *testing.B
+}
+
+func benchmarkGobwasServer(b *testing.B, clients, count int) {
+	s := http.Server{
+		Handler: &handlerGobwas{b},
+	}
+	ch := make(chan struct{}, 1)
+	ln := newFakeListener(b.N, clients, count, buildUpgrade())
+
+	go func() {
+		s.Serve(ln)
+		ch <- struct{}{}
+	}()
+
+	<-ln.done
+	select {
+	case <-ch:
+	case <-time.After(time.Second * 10):
+		b.Fatal("timeout")
+	}
+}
+
+func (h *handlerGobwas) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c, _, _, err := ws.UpgradeHTTP(r, w)
+	if err != nil {
+		h.b.Fatal(err)
+		return
+	}
+	for {
+		_, _, err := wsutil.ReadClientData(c)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
+	}
+	c.Close()
+}
+
 func Benchmark1000FastClientsPer10Messages(b *testing.B) {
 	benchmarkFastServer(b, 1000, 10)
 }
@@ -310,6 +354,18 @@ func Benchmark1000NhooyrClientsPer100Messages(b *testing.B) {
 
 func Benchmark1000NhooyrClientsPer1000Messages(b *testing.B) {
 	benchmarkNhooyrServer(b, 1000, 1000)
+}
+
+func Benchmark1000GobwasClientsPer10Messages(b *testing.B) {
+	benchmarkGobwasServer(b, 1000, 10)
+}
+
+func Benchmark1000GobwasClientsPer100Messages(b *testing.B) {
+	benchmarkGobwasServer(b, 1000, 100)
+}
+
+func Benchmark1000GobwasClientsPer1000Messages(b *testing.B) {
+	benchmarkGobwasServer(b, 1000, 1000)
 }
 
 func Benchmark100FastMsgsPerConn(b *testing.B) {
@@ -358,4 +414,20 @@ func Benchmark10000NhooyrMsgsPerConn(b *testing.B) {
 
 func Benchmark100000NhooyrMsgsPerConn(b *testing.B) {
 	benchmarkNhooyrServer(b, runtime.NumCPU(), 100000)
+}
+
+func Benchmark100GobwasMsgsPerConn(b *testing.B) {
+	benchmarkGobwasServer(b, runtime.NumCPU(), 100)
+}
+
+func Benchmark1000GobwasMsgsPerConn(b *testing.B) {
+	benchmarkGobwasServer(b, runtime.NumCPU(), 1000)
+}
+
+func Benchmark10000GobwasMsgsPerConn(b *testing.B) {
+	benchmarkGobwasServer(b, runtime.NumCPU(), 10000)
+}
+
+func Benchmark100000GobwasMsgsPerConn(b *testing.B) {
+	benchmarkGobwasServer(b, runtime.NumCPU(), 100000)
 }

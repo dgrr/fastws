@@ -99,7 +99,7 @@ conn.WriteString("Hello")
 | Read message using io.Reader            | Non planned    | Yes          | No              |
 | Write message using io.WriteCloser      | Non planned    | Yes          | No              |
 
-# Benchmarks
+# Benchmarks: fastws vs gorilla vs nhooyr vs gobwas
 
 Fastws:
 
@@ -136,4 +136,16 @@ Benchmark100NhooyrMsgsPerConn-8                 845071632         15.1 ns/op    
 Benchmark1000NhooyrMsgsPerConn-8                1000000000           1.47 ns/op        0 B/op        0 allocs/op
 Benchmark10000NhooyrMsgsPerConn-8               1000000000           0.157 ns/op         0 B/op        0 allocs/op
 Benchmark100000NhooyrMsgsPerConn-8              1000000000           0.0251 ns/op        0 B/op        0 allocs/op
+```
+
+Gobwas:
+```
+$ go test -bench=Gobwas -benchmem -benchtime=10s
+Benchmark1000GobwasClientsPer10Messages-8       98497042               106 ns/op              86 B/op          1 allocs/op
+Benchmark1000GobwasClientsPer100Messages-8      1000000000              13.4 ns/op             8 B/op          0 allocs/op
+Benchmark1000GobwasClientsPer1000Messages-8     1000000000               1.19 ns/op            0 B/op          0 allocs/op
+Benchmark100GobwasMsgsPerConn-8                 833576667               14.6 ns/op             8 B/op          0 allocs/op
+Benchmark1000GobwasMsgsPerConn-8                1000000000               1.46 ns/op            0 B/op          0 allocs/op
+Benchmark10000GobwasMsgsPerConn-8               1000000000               0.156 ns/op           0 B/op          0 allocs/op
+Benchmark100000GobwasMsgsPerConn-8              1000000000               0.0262 ns/op          0 B/op          0 allocs/op
 ```
