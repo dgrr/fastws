@@ -2,7 +2,7 @@
 
 Websocket library for [fasthttp](https://github.com/valyala/fasthttp).
 
-See [examples](https://github.com/dgrr/fastws/blob/master/examples) to see how to use it.
+Checkout [examples](https://github.com/dgrr/fastws/blob/master/examples) to inspire yourself.
 
 # Why another websocket package?
 
@@ -12,6 +12,8 @@ and does not provide low level access to websocket packet crafting.
 Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
 in production allowing low level access to the websocket frames.
+
+To see an example of what this package CAN do that others NOT checkout [this](https://github.com/dgrr/fastws/blob/master/examples/concurrent_server.go) example.
 
 # How it works? (Server)
 
@@ -39,18 +41,18 @@ func wsHandler(conn *Conn) {
 
 After this point you can handle your awesome websocket connection.
 The connection is automatically
-[closed](https://github.com/dgrr/fastws/blob/master/upgrader.go#L80)
-by fastws when you exit your handler but you can close
-your connection if you wanna send
+[closed](https://github.com/dgrr/fastws/blob/master/upgrader.go#L137)
+by fastws when you exit your handler. YES! You are able to close
+your connection if you want to send a
 [close](https://godoc.org/github.com/dgrr/fastws#Conn.Close) message to the peer.
 
-If you want low level usage of the library your can use
+If you are looking for a low level usage of the library you can use the
 [Frame](https://godoc.org/github.com/dgrr/fastws#Frame) structure
 to handle frame by frame in a websocket connection.
 Also you can use
 [Conn.ReadFrame](https://godoc.org/github.com/dgrr/fastws#Conn.ReadFrame) or
 [Conn.NextFrame](https://godoc.org/github.com/dgrr/fastws#Conn.NextFrame) to read
-frame by frame from your connection peer.
+frame by frame from your peers.
 
 ```go
 func main() {
@@ -85,7 +87,7 @@ if err != nil {
 conn.WriteString("Hello")
 ```
 
-# fastws vs gorilla.
+# fastws vs gorilla vs nhooyr.
 
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)| [Nhooyr](https://github.com/nhooyr/websocket)
 | --------------------------------------- |:--------------:| ------------:| ---------------:|
