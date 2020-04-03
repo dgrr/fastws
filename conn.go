@@ -143,11 +143,11 @@ func (conn *Conn) Reset(c net.Conn) {
 		conn.bf = bufio.NewReadWriter(br, bufio.NewWriter(c))
 	}
 	conn.closed = false
+	conn.wg.Add(1)
 	go conn.readLoop()
 }
 
 func (conn *Conn) readLoop() {
-	conn.wg.Add(1)
 	defer conn.wg.Done()
 	defer close(conn.framer)
 
@@ -157,7 +157,7 @@ func (conn *Conn) readLoop() {
 
 		_, err := fr.ReadFrom(conn.bf)
 		if err != nil {
-			if err != EOF && !strings.Contains(err.Error(), "use of closed") {
+			if err != EOF && !strings.Contains(err.Error(), "closed") {
 				var (
 					ok   = true // it can only be false
 					errn error
@@ -201,9 +201,10 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 
 	nn, err := fr.WriteTo(conn.bf)
 	if err == nil {
-		conn.c.SetWriteDeadline(zeroTime)
+		err = conn.bf.Flush()
 	}
-	conn.bf.Flush()
+	conn.c.SetWriteDeadline(zeroTime)
+
 	return int(nn), err
 }
 
@@ -218,9 +219,9 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	}
 	conn.lck.Unlock()
 
-	timeout := conn.ReadTimeout
-	if timeout <= 0 {
-		timeout = time.Minute * 5
+	var expire <-chan time.Time
+	if conn.ReadTimeout > 0 {
+		expire = time.After(conn.ReadTimeout)
 	}
 
 	var ok bool
@@ -238,10 +239,8 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 			if !ok {
 				err = EOF
 			}
-		case <-time.After(timeout):
-			if timeout > 0 {
-				err = errors.New("i/o timeout")
-			}
+		case <-expire:
+			err = errors.New("i/o timeout")
 		}
 	}
 
@@ -364,6 +363,7 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	if !conn.server {
 		fr.Mask()
 	}
+
 	return conn.WriteFrame(fr)
 }
 
@@ -432,6 +432,7 @@ func (conn *Conn) ReadFull(b []byte, fr *Frame) ([]byte, error) {
 		if nErr != nil {
 			err = fmt.Errorf("error closing connection due to %s: %s", err, nErr)
 		}
+		conn.mustClose(err == nil)
 	}
 
 	return b, err
@@ -460,8 +461,9 @@ func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	if !conn.server {
 		fr.Mask()
 	}
-	_, err = fr.WriteTo(conn.c)
+	_, err = conn.WriteFrame(fr)
 	ReleaseFrame(fr)
+
 	return
 }
 
@@ -474,8 +476,10 @@ func (conn *Conn) ReplyClose(fr *Frame) (err error) {
 	}
 	fr.SetFin()
 	fr.SetClose()
-	_, err = conn.WriteFrame(fr)
-	return
+
+	conn.WriteFrame(fr)
+
+	return conn.mustClose(false)
 }
 
 // Close closes the websocket connection.
@@ -487,9 +491,23 @@ func (conn *Conn) Close() error {
 //
 // When connection is handled by server the connection is closed automatically.
 func (conn *Conn) CloseString(b string) error {
-	conn.lbw.Lock()
-	defer conn.lbw.Unlock()
+	conn.lck.Lock()
+	if conn.closed {
+		conn.lck.Unlock()
+		return EOF
+	}
+	conn.lck.Unlock()
 
+	var bb []byte
+	if b != "" {
+		bb = s2b(b)
+	}
+	conn.sendClose(StatusNone, bb)
+
+	return conn.mustClose(true)
+}
+
+func (conn *Conn) mustClose(wait bool) error {
 	conn.lck.Lock()
 	if conn.closed {
 		conn.lck.Unlock()
@@ -500,34 +518,28 @@ func (conn *Conn) CloseString(b string) error {
 
 	defer close(conn.errch)
 
-	var bb []byte
-	var err error
-
-	if b != "" {
-		bb = s2b(b)
-	}
-
-	conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
-	conn.sendClose(StatusNone, bb) // TODO: Edit status code
-	var fr *Frame
-	t := time.Now()
-loop:
-	for time.Now().Sub(t) < time.Second*5 {
-		var ok bool
-		select {
-		case fr, ok = <-conn.framer:
-			if !ok || fr.IsClose() { // read until the close frame
+	if wait {
+		var fr *Frame
+		expire := time.After(time.Second * 5)
+	loop:
+		for {
+			var ok bool
+			select {
+			case fr, ok = <-conn.framer:
+				if !ok || fr.IsClose() { // read until the close frame
+					break loop
+				}
+				ReleaseFrame(fr)
+			case <-expire:
 				break loop
 			}
+		}
+		if fr != nil {
 			ReleaseFrame(fr)
 		}
 	}
 
-	err = conn.c.Close()
-	if fr != nil {
-		ReleaseFrame(fr)
-	}
-	conn.c.SetWriteDeadline(zeroTime)
+	err := conn.c.Close()
 	conn.wg.Wait() // should return immediately after closing
 
 	return err
