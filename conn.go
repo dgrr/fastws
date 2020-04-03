@@ -1,6 +1,7 @@
 package fastws
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"net"
@@ -52,12 +53,12 @@ var (
 // This handler is compatible with io.Reader, io.ReaderFrom, io.Writer, io.WriterTo
 type Conn struct {
 	c      net.Conn
+	bf     *bufio.ReadWriter
 	closed bool
 	wg     sync.WaitGroup
 
 	framer chan *Frame
 	errch  chan error
-	closer chan struct{}
 
 	server   bool
 	compress bool
@@ -122,11 +123,7 @@ func releaseConn(conn *Conn) {
 
 // Reset resets conn values setting c as default connection endpoint.
 func (conn *Conn) Reset(c net.Conn) {
-	if conn.c != nil {
-		conn.c.Close() // hard close
-	}
 	conn.framer = make(chan *Frame, 128)
-	conn.closer = make(chan struct{}, 1)
 	conn.errch = make(chan error, 128)
 	conn.ReadTimeout = defaultDeadline
 	conn.WriteTimeout = defaultDeadline
@@ -134,6 +131,10 @@ func (conn *Conn) Reset(c net.Conn) {
 	conn.compress = false
 	conn.server = false
 	conn.c = c
+	conn.bf = bufio.NewReadWriter(
+		bufio.NewReader(c),
+		bufio.NewWriter(c),
+	)
 	conn.closed = false
 	go conn.readLoop()
 }
@@ -147,7 +148,7 @@ func (conn *Conn) readLoop() {
 		fr := AcquireFrame()
 		fr.SetPayloadSize(conn.MaxPayloadSize)
 
-		_, err := fr.ReadFrom(conn.c)
+		_, err := fr.ReadFrom(conn.bf)
 		if err != nil {
 			if err != EOF && !strings.Contains(err.Error(), "use of closed") {
 				var (
@@ -175,9 +176,6 @@ func (conn *Conn) readLoop() {
 
 // WriteFrame writes fr to the connection endpoint.
 func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
-	conn.lbw.Lock()
-	defer conn.lbw.Unlock()
-
 	conn.lck.Lock()
 	if conn.closed {
 		conn.lck.Unlock()
@@ -186,15 +184,19 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	conn.lck.Unlock()
 	// TODO: Compress
 
+	conn.lbw.Lock()
+	defer conn.lbw.Unlock()
+
 	fr.SetPayloadSize(conn.MaxPayloadSize)
 	if conn.WriteTimeout > 0 {
 		conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
 	}
 
-	nn, err := fr.WriteTo(conn.c)
+	nn, err := fr.WriteTo(conn.bf)
 	if err == nil {
 		conn.c.SetWriteDeadline(zeroTime)
 	}
+	conn.bf.Flush()
 	return int(nn), err
 }
 
@@ -214,6 +216,7 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 		timeout = time.Minute * 5
 	}
 
+	var ok bool
 	for nn == 0 && err == nil {
 		select {
 		case fr2, ok := <-conn.framer:
@@ -224,13 +227,14 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 				nn = int(fr.Len())
 				ReleaseFrame(fr2)
 			}
-		case err = <-conn.errch:
+		case err, ok = <-conn.errch:
+			if !ok {
+				err = EOF
+			}
 		case <-time.After(timeout):
 			if timeout > 0 {
 				err = errors.New("i/o timeout")
 			}
-		case <-conn.closer:
-			err = EOF
 		}
 	}
 
@@ -484,9 +488,6 @@ func (conn *Conn) CloseString(b string) error {
 		conn.lck.Unlock()
 		return EOF
 	}
-	// closing conn.closer here ensures the goroutines reading
-	// at ReadFrame will return io.EOF
-	close(conn.closer)
 	conn.closed = true
 	conn.lck.Unlock()
 
