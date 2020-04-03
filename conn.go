@@ -64,8 +64,7 @@ type Conn struct {
 	server   bool
 	compress bool
 
-	// mutex for reading and writing
-	lck, lbw sync.Mutex
+	lck sync.Mutex
 
 	// Mode indicates Write default mode.
 	Mode Mode
@@ -188,22 +187,14 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 		conn.lck.Unlock()
 		return 0, EOF
 	}
-	conn.lck.Unlock()
 	// TODO: Compress
 
-	conn.lbw.Lock()
-	defer conn.lbw.Unlock()
-
 	fr.SetPayloadSize(conn.MaxPayloadSize)
-	if conn.WriteTimeout > 0 {
-		conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
-	}
-
 	nn, err := fr.WriteTo(conn.bf)
 	if err == nil {
 		err = conn.bf.Flush()
 	}
-	conn.c.SetWriteDeadline(zeroTime)
+	conn.lck.Unlock()
 
 	return int(nn), err
 }
@@ -212,36 +203,27 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 //
 // This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
-	conn.lck.Lock()
-	if conn.closed {
-		conn.lck.Unlock()
-		return 0, EOF
-	}
-	conn.lck.Unlock()
-
 	var expire <-chan time.Time
 	if conn.ReadTimeout > 0 {
 		expire = time.After(conn.ReadTimeout)
 	}
 
 	var ok bool
-	for nn == 0 && err == nil {
-		select {
-		case fr2, ok := <-conn.framer:
-			if !ok {
-				err = EOF
-			} else {
-				fr2.CopyTo(fr)
-				nn = int(fr.Len())
-				ReleaseFrame(fr2)
-			}
-		case err, ok = <-conn.errch:
-			if !ok {
-				err = EOF
-			}
-		case <-expire:
-			err = errors.New("i/o timeout")
+	select {
+	case fr2, ok := <-conn.framer:
+		if !ok {
+			err = EOF
+		} else {
+			fr2.CopyTo(fr)
+			nn = int(fr.Len())
+			ReleaseFrame(fr2)
 		}
+	case err, ok = <-conn.errch:
+		if !ok {
+			err = EOF
+		}
+	case <-expire:
+		err = errors.New("i/o timeout")
 	}
 
 	return
@@ -516,6 +498,7 @@ func (conn *Conn) mustClose(wait bool) error {
 	conn.closed = true
 	conn.lck.Unlock()
 
+	conn.bf.Flush()
 	defer close(conn.errch)
 
 	if wait {
