@@ -104,7 +104,6 @@ conn.WriteString("Hello")
 # Benchmarks: fastws vs gorilla vs nhooyr vs gobwas
 
 Fastws:
-
 ```
 $ go test -bench=Fast -benchmem -benchtime=10s
 Benchmark1000FastClientsPer10Messages-8         225367248               52.6 ns/op             0 B/op          0 allocs/op
@@ -151,3 +150,51 @@ Benchmark1000GobwasMsgsPerConn-8                1000000000               1.46 ns
 Benchmark10000GobwasMsgsPerConn-8               1000000000               0.156 ns/op           0 B/op          0 allocs/op
 Benchmark100000GobwasMsgsPerConn-8              1000000000               0.0262 ns/op          0 B/op          0 allocs/op
 ```
+
+# Stress tests
+
+The following stress test were performed without timeouts:
+
+Executing `tcpkali --ws -c 100 -m 'hello world!!13212312!' -r 10k localhost:8081` the tests shows the following:
+
+Fastws:
+```
+Total data sent:     267.4 MiB (280416485 bytes)
+Total data received: 229.2 MiB (240330760 bytes)
+Bandwidth per channel: 4.164⇅ Mbps (520.5 kBps)
+Aggregate bandwidth: 192.172↓, 224.225↑ Mbps
+Packet rate estimate: 153966.7↓, 47866.8↑ (1↓, 1↑ TCP MSS/op)
+Test duration: 10.0048 s.
+```
+
+Gorilla:
+```
+Total data sent:     267.6 MiB (280594916 bytes)
+Total data received: 165.8 MiB (173883303 bytes)
+Bandwidth per channel: 3.632⇅ Mbps (454.0 kBps)
+Aggregate bandwidth: 138.973↓, 224.260↑ Mbps
+Packet rate estimate: 215158.9↓, 74635.5↑ (1↓, 1↑ TCP MSS/op)
+Test duration: 10.0096 s.
+```
+
+Nhooyr: (Don't know why is that low)
+```
+Total data sent:     234.3 MiB (245645988 bytes)
+Total data received: 67.7 MiB (70944682 bytes)
+Bandwidth per channel: 2.532⇅ Mbps (316.5 kBps)
+Aggregate bandwidth: 56.740↓, 196.461↑ Mbps
+Packet rate estimate: 92483.9↓, 50538.6↑ (1↓, 1↑ TCP MSS/op)
+Test duration: 10.0028 s
+```
+
+Gobwas:
+```
+Total data sent:     267.6 MiB (280591457 bytes)
+Total data received: 169.5 MiB (177693000 bytes)
+Bandwidth per channel: 3.664⇅ Mbps (458.0 kBps)
+Aggregate bandwidth: 142.080↓, 224.356↑ Mbps
+Packet rate estimate: 189499.0↓, 66535.5↑ (1↓, 1↑ TCP MSS/op)
+Test duration: 10.0052 s.
+```
+
+The source files are in [this](https://github.com/dgrr/tree/master/stress-tests/) folder.

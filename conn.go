@@ -190,10 +190,16 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 	// TODO: Compress
 
 	fr.SetPayloadSize(conn.MaxPayloadSize)
+
+	if conn.WriteTimeout > 0 {
+		conn.c.SetWriteDeadline(time.Now().Add(conn.WriteTimeout))
+	}
+
 	nn, err := fr.WriteTo(conn.bf)
 	if err == nil {
 		err = conn.bf.Flush()
 	}
+	conn.c.SetWriteDeadline(zeroTime)
 	conn.lck.Unlock()
 
 	return int(nn), err
