@@ -4,11 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/gorilla/websocket"
 	nyws "nhooyr.io/websocket"
 )
-
-var upgrader = websocket.Upgrader{}
 
 type handler struct{}
 
