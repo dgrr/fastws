@@ -95,7 +95,7 @@ func BenchmarkRead(b *testing.B) {
 
 		fr := AcquireFrame()
 		for pb.Next() {
-			_, err = fr.readFrom(reader)
+			_, err = fr.ReadFrom(reader)
 			if err != nil && err != io.EOF {
 				break
 			}

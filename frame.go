@@ -8,10 +8,6 @@ import (
 	"sync"
 )
 
-const (
-	maxPayloadSize = uint64(4096)
-)
-
 // Code to send.
 type Code uint8
 
@@ -86,7 +82,7 @@ Data: %v`,
 var framePool = sync.Pool{
 	New: func() interface{} {
 		fr := &Frame{
-			max:    maxPayloadSize,
+			max:    DefaultPayloadSize,
 			op:     make([]byte, opSize),
 			mask:   make([]byte, maskSize),
 			status: make([]byte, statusSize),
@@ -227,6 +223,11 @@ func (fr *Frame) parseStatus() {
 // Payload returns Frame b.
 func (fr *Frame) Payload() []byte {
 	return fr.b
+}
+
+// PayloadLen ...
+func (fr *Frame) PayloadLen() int {
+	return len(fr.b)
 }
 
 // PayloadSize returns max b size.

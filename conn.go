@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -77,7 +78,7 @@ type Conn struct {
 
 	// MaxPayloadSize prevents huge memory allocation.
 	//
-	// By default MaxPayloadSize is 4096.
+	// By default MaxPayloadSize is DefaultPayloadSize.
 	MaxPayloadSize uint64
 }
 
@@ -121,20 +122,26 @@ func releaseConn(conn *Conn) {
 	connPool.Put(conn)
 }
 
+const DefaultPayloadSize = 1 << 20
+
 // Reset resets conn values setting c as default connection endpoint.
 func (conn *Conn) Reset(c net.Conn) {
 	conn.framer = make(chan *Frame, 128)
 	conn.errch = make(chan error, 128)
 	conn.ReadTimeout = defaultDeadline
 	conn.WriteTimeout = defaultDeadline
-	conn.MaxPayloadSize = maxPayloadSize
+	conn.MaxPayloadSize = DefaultPayloadSize
 	conn.compress = false
 	conn.server = false
 	conn.c = c
-	conn.bf = bufio.NewReadWriter(
-		bufio.NewReader(c),
-		bufio.NewWriter(c),
-	)
+	{
+		cr := c.(io.Reader)
+		br, ok := cr.(*bufio.Reader)
+		if !ok {
+			br = bufio.NewReader(c)
+		}
+		conn.bf = bufio.NewReadWriter(br, bufio.NewWriter(c))
+	}
 	conn.closed = false
 	go conn.readLoop()
 }
