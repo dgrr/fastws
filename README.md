@@ -13,7 +13,8 @@ Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
 in production allowing low level access to the websocket frames.
 
-To see an example of what this package CAN do that others NOT checkout [this](https://github.com/dgrr/fastws/blob/master/examples/concurrent_server.go) example.
+To see an example of what this package CAN do that others NOT checkout [this](https://github.com/dgrr/fastws/blob/master/examples/concurrent_server.go)
+or [this](https://github.com/dgrr/fastws/blob/master/examples/broadcast.go) examples.
 
 # How it works? (Server)
 
