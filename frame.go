@@ -157,12 +157,10 @@ func (fr *Frame) Code() Code {
 // Mode returns frame mode.
 func (fr *Frame) Mode() (mode Mode) {
 	switch fr.Code() {
-	case CodeText:
-		mode = ModeText
 	case CodeBinary:
 		mode = ModeBinary
 	default:
-		mode = ModeNone
+		mode = ModeText
 	}
 	return
 }

@@ -102,21 +102,6 @@ func (conn *Conn) RemoteAddr() net.Addr {
 	return conn.c.RemoteAddr()
 }
 
-// SetDeadline calls net.Conn.SetDeadline
-func (conn *Conn) SetDeadline(t time.Time) error {
-	return conn.c.SetDeadline(t)
-}
-
-// SetReadDeadline calls net.Conn.SetReadDeadline
-func (conn *Conn) SetReadDeadline(t time.Time) error {
-	return conn.c.SetReadDeadline(t)
-}
-
-// SetWriteDeadline calls net.Conn.SetWriteDeadline
-func (conn *Conn) SetWriteDeadline(t time.Time) error {
-	return conn.c.SetWriteDeadline(t)
-}
-
 func acquireConn(c net.Conn) (conn *Conn) {
 	ci := connPool.Get()
 	if ci != nil {
