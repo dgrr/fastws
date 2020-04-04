@@ -75,7 +75,7 @@ func TestDial(t *testing.T) {
 
 func TestClientConcurrentWrite(t *testing.T) {
 	n := 10_000
-	var text = "Make fasthttp great again"
+	var text = []byte("Make fasthttp great again")
 	var uri = "http://localhost:9843/"
 	ln := fasthttputil.NewInmemoryListener()
 	upgr := Upgrader{
@@ -90,7 +90,7 @@ func TestClientConcurrentWrite(t *testing.T) {
 					}
 					t.Fatal(err)
 				}
-				if string(b) != text {
+				if string(b) != string(text) {
 					t.Fatalf("%s <> %s", b, text)
 				}
 				cnt++
@@ -118,7 +118,6 @@ func TestClientConcurrentWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
 
 	var wg sync.WaitGroup
 	var chs = make([]chan string, 16)
@@ -147,7 +146,7 @@ loop:
 				j = 0
 			}
 			select {
-			case chs[j] <- text:
+			case chs[j] <- string(text):
 				continue loop
 			default:
 			}
@@ -158,6 +157,7 @@ loop:
 	}
 
 	wg.Wait()
+	conn.Close()
 	ln.Close()
 
 	select {
@@ -170,22 +170,18 @@ loop:
 
 func TestConnCloseWhileReading(t *testing.T) {
 	var uri = "http://localhost:9843/"
-	var text = "Make fasthttp great again"
 	ln := fasthttputil.NewInmemoryListener()
 	upgr := Upgrader{
 		Origin: uri,
 		Handler: func(conn *Conn) {
 			go func() {
 				for {
-					_, b, err := conn.ReadMessage(nil)
+					_, _, err := conn.ReadMessage(nil)
 					if err != nil {
 						if err == EOF {
 							break
 						}
 						panic(err)
-					}
-					if string(b) != text {
-						t.Fatalf("%s <> %s", b, text)
 					}
 				}
 			}()
@@ -212,24 +208,12 @@ func TestConnCloseWhileReading(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	go func() {
 		for {
 			_, _, err := conn.ReadMessage(nil)
 			if err != nil {
 				break
 			}
 		}
-	}()
-
-	for {
-		_, err := conn.WriteString(text)
-		if err != nil {
-			if err == EOF {
-				break
-			}
-			t.Fatal(err)
-		}
-	}
 
 	conn.Close()
 	ln.Close()

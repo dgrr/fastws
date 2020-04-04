@@ -511,7 +511,7 @@ func (conn *Conn) mustClose(wait bool) error {
 	conn.lck.Unlock()
 
 	conn.bf.Flush()
-	defer close(conn.errch)
+	close(conn.errch)
 
 	if wait {
 		var fr *Frame
