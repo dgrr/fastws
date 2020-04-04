@@ -120,17 +120,6 @@ func (upgr *NetUpgrader) Upgrade(resp http.ResponseWriter, req *http.Request) {
 			//compress := mustCompress(exts)
 			compress := false
 
-			// Setting response headers
-			rs.SetStatusCode(fasthttp.StatusSwitchingProtocols)
-			rs.Header.AddBytesKV(connectionString, upgradeString)
-			rs.Header.AddBytesKV(upgradeString, websocketString)
-			rs.Header.AddBytesKV(wsHeaderAccept, makeKey(s2b(hkey), s2b(hkey)))
-			// TODO: implement bad websocket version
-			// https://tools.ietf.org/html/rfc6455#section-4.4
-			if proto := selectProtocol(hprotos, upgr.Protocols); proto != "" {
-				rs.Header.AddBytesK(wsHeaderProtocol, proto)
-			}
-
 			h, ok := resp.(http.Hijacker)
 			if !ok {
 				resp.WriteHeader(http.StatusInternalServerError)
@@ -143,7 +132,22 @@ func (upgr *NetUpgrader) Upgrade(resp http.ResponseWriter, req *http.Request) {
 				return
 			}
 
-			rs.WriteTo(c)
+			// Setting response headers
+			rs.SetStatusCode(fasthttp.StatusSwitchingProtocols)
+			rs.Header.AddBytesKV(connectionString, upgradeString)
+			rs.Header.AddBytesKV(upgradeString, websocketString)
+			rs.Header.AddBytesKV(wsHeaderAccept, makeKey(s2b(hkey), s2b(hkey)))
+			// TODO: implement bad websocket version
+			// https://tools.ietf.org/html/rfc6455#section-4.4
+			if proto := selectProtocol(hprotos, upgr.Protocols); proto != "" {
+				rs.Header.AddBytesK(wsHeaderProtocol, proto)
+			}
+
+			_, err = rs.WriteTo(c)
+			if err != nil {
+				c.Close()
+				return
+			}
 
 			go func() {
 				conn := acquireConn(c)
