@@ -449,6 +449,12 @@ func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	if !conn.server {
 		fr.Mask()
 	}
+
+	if conn.WriteTimeout == 0 {
+		conn.lck.Lock()
+		conn.c.SetWriteDeadline(time.Now().Add(time.Second * 5))
+		conn.lck.Unlock()
+	}
 	_, err = conn.WriteFrame(fr)
 	ReleaseFrame(fr)
 

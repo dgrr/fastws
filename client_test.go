@@ -166,3 +166,77 @@ loop:
 		t.Fatal("timeout")
 	}
 }
+
+
+func TestConnCloseWhileReading(t *testing.T) {
+	var uri = "http://localhost:9843/"
+	var text = "Make fasthttp great again"
+	ln := fasthttputil.NewInmemoryListener()
+	upgr := Upgrader{
+		Origin: uri,
+		Handler: func(conn *Conn) {
+			go func() {
+				for {
+					_, b, err := conn.ReadMessage(nil)
+					if err != nil {
+						if err == EOF {
+							break
+						}
+						panic(err)
+					}
+					if string(b) != text {
+						t.Fatalf("%s <> %s", b, text)
+					}
+				}
+			}()
+			time.Sleep(time.Millisecond*100)
+			conn.Close()
+		},
+	}
+	s := fasthttp.Server{
+		Handler: upgr.Upgrade,
+	}
+	ch := make(chan struct{}, 1)
+	go func() {
+		s.Serve(ln)
+		ch <- struct{}{}
+	}()
+
+	c, err := ln.Dial()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := Client(c, uri)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		for {
+			_, _, err := conn.ReadMessage(nil)
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	for {
+		_, err := conn.WriteString(text)
+		if err != nil {
+			if err == EOF {
+				break
+			}
+			t.Fatal(err)
+		}
+	}
+
+	conn.Close()
+	ln.Close()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second * 2):
+		t.Fatal("timeout")
+	}
+}
