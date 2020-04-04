@@ -1,6 +1,6 @@
 # Fastws
 
-Websocket library for [fasthttp](https://github.com/valyala/fasthttp).
+Websocket library for [fasthttp](https://github.com/valyala/fasthttp). And now for net/http too.
 
 Checkout [examples](https://github.com/dgrr/fastws/blob/master/examples) to inspire yourself.
 
