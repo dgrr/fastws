@@ -1,6 +1,7 @@
 package fastws
 
 import (
+	"net/http"
 	"reflect"
 	"unsafe"
 
@@ -10,6 +11,14 @@ import (
 // Upgrade returns a RequestHandler for fasthttp resuming upgrading process.
 func Upgrade(handler RequestHandler) func(ctx *fasthttp.RequestCtx) {
 	upgr := Upgrader{
+		Handler:  handler,
+		Compress: true,
+	}
+	return upgr.Upgrade
+}
+
+func NetUpgrade(handler RequestHandler) func(http.ResponseWriter, *http.Request) {
+	upgr := NetUpgrader{
 		Handler:  handler,
 		Compress: true,
 	}
