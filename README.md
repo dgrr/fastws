@@ -197,4 +197,4 @@ Packet rate estimate: 189499.0↓, 66535.5↑ (1↓, 1↑ TCP MSS/op)
 Test duration: 10.0052 s.
 ```
 
-The source files are in [this](https://github.com/dgrr/tree/master/stress-tests/) folder.
+The source files are in [this](https://github.com/dgrr/fastws/tree/master/stress-tests/) folder.
