@@ -11,9 +11,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// RequestHandler is the websocket handler.
 type (
+	// RequestHandler is the websocket connection handler.
 	RequestHandler func(conn *Conn)
+	// UpgradeHandler is the upgrading handler.
 	UpgradeHandler func(*fasthttp.RequestCtx) bool
 )
 
@@ -33,10 +34,11 @@ type Upgrader struct {
 	// Protocols are the supported protocols.
 	Protocols []string
 
-	// Origin ...
+	// Origin is used to limit the clients coming from the defined origin
 	Origin string
 
-	// Compress ...
+	// Compress defines whether using compression or not.
+	// TODO
 	Compress bool
 }
 
@@ -46,12 +48,12 @@ func prepareOrigin(b []byte, uri *fasthttp.URI) []byte {
 	return append(b, uri.Host()...)
 }
 
-// Upgrader upgrades HTTP to websocket connection if possible.
+// Upgrade upgrades HTTP to websocket connection if possible.
 //
 // If client does not request any websocket connection this function
 // will execute ctx.NotFound()
 //
-// When connection is successfully stablished this function calls s.Handler.
+// When connection is successfully stablished the function calls s.Handler.
 func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 	if !ctx.IsGet() {
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)

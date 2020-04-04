@@ -11,22 +11,32 @@ import (
 	"time"
 )
 
+// StatusCode is sent when closing a connection.
+//
+// The following constants have been defined by the RFC.
 type StatusCode uint16
 
-// TODO: doc for status
-
 const (
-	StatusUndefined         StatusCode = 0
-	StatusNone                         = 1000
-	StatusGoAway                       = 1001
-	StatusProtocolError                = 1002
-	StatusNotAcceptable                = 1003
-	StatusReserved                     = 1004
-	StatusNotConsistent                = 1007
-	StatusViolation                    = 1008
-	StatusTooBig                       = 1009
-	StatuseExtensionsNeeded            = 1010
-	StatusUnexpected                   = 1011
+	// StatusNone is used to let the peer know nothing happened.
+	StatusNone StatusCode = 1000
+	// StatusGoAway peer's error.
+	StatusGoAway = 1001
+	// StatusProtocolError problem with the peer's way to communicate.
+	StatusProtocolError = 1002
+	// StatusNotAcceptable when a request is not acceptable
+	StatusNotAcceptable = 1003
+	// StatusReserved when a reserved field have been used
+	StatusReserved = 1004
+	// StatusNotConsistent IDK
+	StatusNotConsistent = 1007
+	// StatusViolation a violation of the protocol happened
+	StatusViolation = 1008
+	// StatusTooBig payload bigger than expected
+	StatusTooBig = 1009
+	// StatuseExtensionsNeeded IDK
+	StatuseExtensionsNeeded = 1010
+	// StatusUnexpected IDK
+	StatusUnexpected = 1011
 )
 
 // Mode is the mode in which the bytes are sended.
@@ -35,8 +45,9 @@ const (
 type Mode uint8
 
 const (
-	ModeNone Mode = iota
-	ModeText
+	// ModeText defines to use a text mode
+	ModeText Mode = iota
+	// ModeBinary defines to use a binary mode
 	ModeBinary
 )
 
@@ -121,6 +132,7 @@ func releaseConn(conn *Conn) {
 	connPool.Put(conn)
 }
 
+// DefaultPayloadSize defines the default payload size (when none was defined).
 const DefaultPayloadSize = 1 << 20
 
 // Reset resets conn values setting c as default connection endpoint.
@@ -335,7 +347,6 @@ func (conn *Conn) checkRequirements(fr *Frame, betweenContinuation bool) (c bool
 	return
 }
 
-// TODO: Add timeout
 func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
@@ -355,7 +366,6 @@ func (conn *Conn) write(mode Mode, b []byte) (int, error) {
 	return conn.WriteFrame(fr)
 }
 
-// TODO: Add timeout
 func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	var err error
 	fr := AcquireFrame()
@@ -366,7 +376,7 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 	return fr.Mode(), b, err
 }
 
-// ReadFull ...
+// ReadFull will read the parsed frame fully and writing the payload into b.
 func (conn *Conn) ReadFull(b []byte, fr *Frame) ([]byte, error) {
 	var c bool
 	var err error
@@ -438,9 +448,6 @@ func (conn *Conn) sendClose(status StatusCode, b []byte) (err error) {
 	// If there is a body, the first two bytes of
 	// the body MUST be a 2-byte unsigned integer
 
-	if status == StatusUndefined {
-		status = StatusNone
-	}
 	fr.SetStatus(status)
 
 	if len(b) > 0 {

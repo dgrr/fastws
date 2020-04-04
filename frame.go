@@ -12,12 +12,18 @@ import (
 type Code uint8
 
 const (
+	// CodeContinuation defines the continuation code
 	CodeContinuation Code = 0x0
-	CodeText         Code = 0x1
-	CodeBinary       Code = 0x2
-	CodeClose        Code = 0x8
-	CodePing         Code = 0x9
-	CodePong         Code = 0xA
+	// CodeText defines the text code
+	CodeText Code = 0x1
+	// CodeBinary defines the binary code
+	CodeBinary Code = 0x2
+	// CodeClose defines the close code
+	CodeClose Code = 0x8
+	// CodePing defines the ping code
+	CodePing Code = 0x9
+	// CodePong defines the pong code
+	CodePong Code = 0xA
 )
 
 var zeroBytes = func() []byte {
@@ -37,10 +43,7 @@ const (
 )
 
 // Frame is the unit used to transfer message
-// between endpoints using websocket protocol.
-//
-// Frame could not be used during message exchanging.
-// This type can be used if you want low level access to websocket.
+// between endpoints using the websocket protocol.
 type Frame struct {
 	max    uint64
 	op     []byte
@@ -58,6 +61,7 @@ func (fr *Frame) CopyTo(fr2 *Frame) {
 	fr2.b = append(fr2.b[:0], fr.b...)
 }
 
+// String returns a representation of Frame in a human-readable string format.
 func (fr *Frame) String() string {
 	return fmt.Sprintf(`FIN: %v
 RSV1: %v
@@ -92,12 +96,12 @@ var framePool = sync.Pool{
 	},
 }
 
-// AcquireFrame gets Frame from pool.
+// AcquireFrame gets Frame from the global pool.
 func AcquireFrame() *Frame {
 	return framePool.Get().(*Frame)
 }
 
-// ReleaseFrame puts fr Frame into the pool.
+// ReleaseFrame puts fr Frame into the global pool.
 func ReleaseFrame(fr *Frame) {
 	fr.Reset()
 	framePool.Put(fr)
@@ -119,7 +123,7 @@ func (fr *Frame) resetHeader() {
 	copy(fr.status, zeroBytes)
 }
 
-// Reset resets all Frame values to be reused.
+// Reset resets all Frame values to the default.
 func (fr *Frame) Reset() {
 	fr.resetHeader()
 	fr.resetPayload()
@@ -193,7 +197,9 @@ func (fr *Frame) IsMasked() bool {
 	return fr.op[1]&maskBit != 0
 }
 
-// Len returns b length based on Frame field of length bytes.
+// Len returns the length of the payload based on the header bits.
+//
+// If you want to know the actual payload length use #PayloadLen
 func (fr *Frame) Len() (length uint64) {
 	length = uint64(fr.op[1] & 127)
 	switch length {
@@ -206,7 +212,9 @@ func (fr *Frame) Len() (length uint64) {
 	return
 }
 
-// MaskKey returns mask key if exist.
+// MaskKey returns mask key.
+//
+// Returns zero-padded if doesn't have a mask
 func (fr *Frame) MaskKey() []byte {
 	return fr.mask[:4]
 }
@@ -220,22 +228,22 @@ func (fr *Frame) parseStatus() {
 	}
 }
 
-// Payload returns Frame b.
+// Payload returns the frame payload.
 func (fr *Frame) Payload() []byte {
 	return fr.b
 }
 
-// PayloadLen ...
+// PayloadLen returns the actual payload length
 func (fr *Frame) PayloadLen() int {
 	return len(fr.b)
 }
 
-// PayloadSize returns max b size.
+// PayloadSize returns the max payload size
 func (fr *Frame) PayloadSize() uint64 {
 	return fr.max
 }
 
-// SetPayloadSize sets max b size.
+// SetPayloadSize sets max payload size
 func (fr *Frame) SetPayloadSize(size uint64) {
 	fr.max = size
 }
@@ -298,25 +306,26 @@ func (fr *Frame) SetPong() {
 	fr.SetCode(CodePong)
 }
 
-// SetMask sets mask key to mask the frame and enabled mask bit.
+// SetMask sets the first 4 parsed bytes as mask key
+// and enables the mask bit
 func (fr *Frame) SetMask(b []byte) {
 	fr.op[1] |= maskBit
 	copy(fr.mask, b[:4])
 }
 
-// UnsetMask drops mask bit.
+// UnsetMask only drops the mask bit.
 func (fr *Frame) UnsetMask() {
 	fr.op[1] ^= maskBit
 }
 
-// Write writes b to the frame's payload.
+// Write appends the parsed bytes to the frame's payload
 func (fr *Frame) Write(b []byte) (int, error) {
 	n := len(b)
 	fr.b = append(fr.b, b...)
 	return n, nil
 }
 
-// SetPayload sets b as the frame's payload.
+// SetPayload sets the parsed bytes as frame's payload
 func (fr *Frame) SetPayload(b []byte) {
 	fr.b = append(fr.b[:0], b...)
 }
@@ -349,7 +358,7 @@ func (fr *Frame) setLength(n int) {
 	fr.op[1] |= uint8(n)
 }
 
-// Mask masks Frame b.
+// Mask performs the masking of the current payload
 func (fr *Frame) Mask() {
 	if len(fr.b) > 0 {
 		fr.op[1] |= maskBit
@@ -358,7 +367,7 @@ func (fr *Frame) Mask() {
 	}
 }
 
-// Unmask unmasks Frame b.
+// Unmask performs the unmasking of the current payload
 func (fr *Frame) Unmask() {
 	if len(fr.b) > 0 {
 		key := fr.MaskKey()
@@ -371,7 +380,7 @@ func (fr *Frame) hasStatus() bool {
 	return fr.status[0] > 0 || fr.status[1] > 0
 }
 
-// WriteTo marshals the frame and writes the frame into wr.
+// WriteTo writes the frame into wr.
 func (fr *Frame) WriteTo(wr io.Writer) (n int64, err error) {
 	var ni int
 	s := fr.setPayloadLen()
@@ -406,7 +415,7 @@ func (fr *Frame) WriteTo(wr io.Writer) (n int64, err error) {
 	return
 }
 
-// Status returns StatusCode from request b.
+// Status returns StatusCode.
 func (fr *Frame) Status() (status StatusCode) {
 	status = StatusCode(
 		binary.BigEndian.Uint16(fr.status),
@@ -414,7 +423,7 @@ func (fr *Frame) Status() (status StatusCode) {
 	return
 }
 
-// SetStatus sets status code to the request.
+// SetStatus sets status code.
 //
 // Status code is usually used in Close request.
 func (fr *Frame) SetStatus(status StatusCode) {
@@ -445,11 +454,8 @@ var (
 )
 
 // ReadFrom fills fr reading from rd.
-//
-// if rd == nil then ReadFrom returns EOF
-func (fr *Frame) ReadFrom(rd io.Reader) (nn int64, err error) {
-	nn, err = fr.readFrom(rd)
-	return
+func (fr *Frame) ReadFrom(rd io.Reader) (int64, error) {
+	return fr.readFrom(rd)
 }
 
 var (

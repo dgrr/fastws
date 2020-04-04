@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	// ErrCannotUpgrade shows up when an error ocurred when upgrading a connection.
 	ErrCannotUpgrade = errors.New("cannot upgrade connection")
 )
 
@@ -76,14 +77,14 @@ func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error)
 	return conn, err
 }
 
-// Dial performs establishes websocket connection as client.
+// Dial establishes a websocket connection as client.
 //
-// url parameter must follow WebSocket url format i.e. ws://host:port/path
+// url parameter must follow WebSocket URL format i.e. ws://host:port/path
 func Dial(url string) (*Conn, error) {
 	return dial(url, nil)
 }
 
-// DialWithHeaders establishes websocket connection as client sending personalized request.
+// DialWithHeaders establishes a websocket connection as client sending a personalized request.
 func DialWithHeaders(url string, req *fasthttp.Request) (*Conn, error) {
 	return dial(url, req)
 }
