@@ -208,7 +208,9 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	var expire <-chan time.Time
 	if conn.ReadTimeout > 0 {
-		expire = time.After(conn.ReadTimeout)
+		timer := time.NewTimer(conn.ReadTimeout)
+		expire = timer.C
+		defer timer.Stop()
 	}
 
 	var ok bool
