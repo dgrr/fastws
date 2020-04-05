@@ -27,7 +27,7 @@ to handle the request.
 
 If you just want a websocket connection and don't want to be
 a websocket expert you can just
-use [Upgrade](https://godoc.org/github.com/dgrr/fastws#Upgrade) function parsing the
+use [Upgrade](https://godoc.org/github.com/dgrr/fastws#Upgrade) function passing the
 handler.
 
 ```go
@@ -74,7 +74,11 @@ func wsHandler(conn *Conn) {
 }
 ```
 
-All of this functions are safe-concurrent. Ready to be used from different goroutines.
+All of the [Conn](https://godoc.org/github.com/dgrr/fastws#Conn)
+functions are safe-concurrent. Ready to be used from different goroutines.
+If you want to deal with the frames you can either use
+[Conn](https://godoc.org/github.com/dgrr/fastws#Conn) or your own net.Conn,
+but remember to manage concurrency when using a net.Conn
 
 # How it works? (Client)
 
@@ -88,19 +92,19 @@ if err != nil {
 conn.WriteString("Hello")
 ```
 
-# fastws vs gorilla vs nhooyr.
+# fastws vs gorilla vs nhooyr vs gobwas
 
 | Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)| [Nhooyr](https://github.com/nhooyr/websocket)
-| --------------------------------------- |:--------------:| ------------:| ---------------:|
-| Concurrent R/W                          | Yes            | No           | No. Only writes |
-| Passes Autobahn Test Suite              | Mostly         | Yes          | Yes             |
-| Receive fragmented message              | Yes            | Yes          | Yes             |
-| Send close message                      | Yes            | Yes          | Yes             |
-| Send pings and receive pongs            | Yes            | Yes          | Yes             |
-| Get the type of a received data message | Yes            | Yes          | Yes             |
-| Compression Extensions                  | On development | Experimental | Yes             |
-| Read message using io.Reader            | Non planned    | Yes          | No              |
-| Write message using io.WriteCloser      | Non planned    | Yes          | No              |
+| --------------------------------------- |:--------------:| ------------:| ---------------:| ------------:|
+| Concurrent R/W                          | Yes            | No           | No. Only writes | No           |
+| Passes Autobahn Test Suite              | Mostly         | Yes          | Yes             | Mostly       |    
+| Receive fragmented message              | Yes            | Yes          | Yes             | Yes          |
+| Send close message                      | Yes            | Yes          | Yes             | Yes          |
+| Send pings and receive pongs            | Yes            | Yes          | Yes             | Yes          |
+| Get the type of a received data message | Yes            | Yes          | Yes             | Yes          |
+| Compression Extensions                  | On development | Experimental | Yes             | No (?)       |
+| Read message using io.Reader            | Non planned    | Yes          | No              | No (?)       |
+| Write message using io.WriteCloser      | Non planned    | Yes          | No              | No (?)       |
 
 # Benchmarks: fastws vs gorilla vs nhooyr vs gobwas
 
