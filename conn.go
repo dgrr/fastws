@@ -203,8 +203,6 @@ func (conn *Conn) WriteFrame(fr *Frame) (int, error) {
 }
 
 // ReadFrame fills fr with the next connection frame.
-//
-// This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 	var expire <-chan time.Time
 	if conn.ReadTimeout > 0 {
@@ -220,7 +218,7 @@ func (conn *Conn) ReadFrame(fr *Frame) (nn int, err error) {
 			err = EOF
 		} else {
 			fr2.CopyTo(fr)
-			nn = int(fr.Len())
+			nn = fr.PayloadLen()
 			ReleaseFrame(fr2)
 		}
 	case err, ok = <-conn.errch:
@@ -252,6 +250,8 @@ func (conn *Conn) WriteMessage(mode Mode, b []byte) (int, error) {
 // ReadMessage reads next message from conn and returns the mode, b and/or error.
 //
 // b is used to avoid extra allocations and can be nil.
+//
+// This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadMessage(b []byte) (Mode, []byte, error) {
 	return conn.read(b)
 }
@@ -364,6 +364,8 @@ func (conn *Conn) read(b []byte) (Mode, []byte, error) {
 }
 
 // ReadFull will read the parsed frame fully and writing the payload into b.
+//
+// This function responds automatically to PING and PONG messages.
 func (conn *Conn) ReadFull(b []byte, fr *Frame) ([]byte, error) {
 	var c bool
 	var err error
