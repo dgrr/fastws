@@ -8,7 +8,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Upgrade returns a RequestHandler for fasthttp resuming upgrading process.
+// Upgrade returns a RequestHandler for fasthttp doing the upgrading process easier.
 func Upgrade(handler RequestHandler) func(ctx *fasthttp.RequestCtx) {
 	upgr := Upgrader{
 		Handler:  handler,
@@ -17,6 +17,7 @@ func Upgrade(handler RequestHandler) func(ctx *fasthttp.RequestCtx) {
 	return upgr.Upgrade
 }
 
+// NetUpgrade returns a RequestHandler for net/http doing the upgrading process easier.
 func NetUpgrade(handler RequestHandler) func(http.ResponseWriter, *http.Request) {
 	upgr := NetUpgrader{
 		Handler:  handler,
