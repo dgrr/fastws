@@ -128,13 +128,21 @@ func (upgr *Upgrader) Upgrade(ctx *fasthttp.RequestCtx) {
 				ctx.Response.Header.AddBytesK(wsHeaderProtocol, proto)
 			}
 
+			userValues := make(map[string]interface{})
+			ctx.VisitUserValues(func(k []byte, v interface{}) {
+				userValues[string(k)] = v
+			})
+
 			ctx.Hijack(func(c net.Conn) {
 				conn := acquireConn(c)
 				// stablishing default options
 				conn.server = true
 				conn.compress = compress
+				conn.userValues = userValues
+
 				// executing handler
 				upgr.Handler(conn)
+
 				// closes and release the connection
 				conn.Close()
 				releaseConn(conn)

@@ -77,6 +77,8 @@ type Conn struct {
 
 	lck sync.Mutex
 
+	userValues map[string]interface{}
+
 	// Mode indicates Write default mode.
 	Mode Mode
 
@@ -90,6 +92,16 @@ type Conn struct {
 	//
 	// By default MaxPayloadSize is DefaultPayloadSize.
 	MaxPayloadSize uint64
+}
+
+// UserValue returns the key associated value.
+func (conn *Conn) UserValue(key string) interface{} {
+	return conn.userValues[key]
+}
+
+// SetUserValue assigns a key to the given value
+func (conn *Conn) SetUserValue(key string, value interface{}) {
+	conn.userValues[key] = value
 }
 
 // LocalAddr returns local address.
@@ -129,6 +141,7 @@ func (conn *Conn) Reset(c net.Conn) {
 	conn.MaxPayloadSize = DefaultPayloadSize
 	conn.compress = false
 	conn.server = false
+	conn.userValues = make(map[string]interface{})
 	conn.c = c
 	{
 		cr := c.(io.Reader)

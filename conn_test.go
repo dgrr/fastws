@@ -244,3 +244,58 @@ func TestCloseWhileReading(t *testing.T) {
 	s.Shutdown()
 	ln.Close()
 }
+
+func TestUserValue(t *testing.T) {
+	var uri = "http://localhost:9843/"
+	var text = "Hello user!!"
+	ln := fasthttputil.NewInmemoryListener()
+	upgr := Upgrader{
+		Origin: uri,
+		Handler: func(conn *Conn) {
+			v := conn.UserValue("custom")
+			if v == nil {
+				t.Fatal("custom is nil")
+			}
+			conn.WriteString(v.(string))
+		},
+	}
+	s := fasthttp.Server{
+		Handler: func(ctx *fasthttp.RequestCtx) {
+			ctx.SetUserValue("custom", text)
+			upgr.Upgrade(ctx)
+		},
+	}
+	ch := make(chan struct{}, 1)
+	go func() {
+		s.Serve(ln)
+		ch <- struct{}{}
+	}()
+
+	c, err := ln.Dial()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := Client(c, uri)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, b, err := conn.ReadMessage(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(b) != text {
+		t.Fatalf("client expecting %s. Got %s", text, b)
+	}
+
+	conn.Close()
+	ln.Close()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second * 5):
+		t.Fatal("timeout")
+	}
+}
