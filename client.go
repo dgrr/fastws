@@ -66,8 +66,10 @@ func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error)
 	bw.Flush()
 	err = res.Read(br)
 	if err == nil {
+		upgradeValue := res.Header.PeekBytes(upgradeString)
 		if res.StatusCode() != 101 ||
-			!bytes.Equal(res.Header.PeekBytes(upgradeString), websocketString) {
+			(!bytes.Equal(upgradeValue, websocketString) &&
+			 !bytes.Equal(upgradeValue, websocket2String)) {
 			err = ErrCannotUpgrade
 		} else {
 			conn = acquireConn(c)
