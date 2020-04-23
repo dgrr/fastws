@@ -196,12 +196,12 @@ func TestClientConcurrentWrite(t *testing.T) {
 			defer wg.Done()
 
 			for msg := range ch {
-				_, err = conn.WriteString(msg)
+				_, err := conn.WriteString(msg)
 				if err != nil {
 					if err == EOF {
 						break
 					}
-					t.Fatal(err)
+					panic(err)
 				}
 			}
 		}(chs[i])
