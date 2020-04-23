@@ -63,7 +63,7 @@ func (upgr *NetUpgrader) Upgrade(resp http.ResponseWriter, req *http.Request) {
 		b = prepareOrigin(b, uri)
 		fasthttp.ReleaseURI(uri)
 
-		if !equalFold(b, s2b(origin)) {
+		if !equalsFold(b, s2b(origin)) {
 			resp.WriteHeader(http.StatusForbidden)
 			bytePool.Put(b)
 			return
@@ -89,7 +89,7 @@ func (upgr *NetUpgrader) Upgrade(resp http.ResponseWriter, req *http.Request) {
 		// Peek upgrade header field.
 		hup := req.Header.Get("Upgrade")
 		// Compare with websocket string defined by the RFC
-		if equalFold(s2b(hup), websocketString) {
+		if equalsFold(s2b(hup), websocketString) {
 			// Checking websocket version
 			hversion := req.Header.Get(b2s(wsHeaderVersion))
 			// Peeking websocket key.

@@ -40,15 +40,12 @@ func s2b(s string) []byte {
 	return *(*[]byte)(unsafe.Pointer(&bh))
 }
 
-func equalFold(b, s []byte) (equals bool) {
+func equalsFold(b, s []byte) (equals bool) {
 	n := len(b)
-	if n != len(s) {
-		equals = false
-	} else {
-		equals = true
+	equals = n == len(s)
+	if equals {
 		for i := 0; i < n; i++ {
-			if b[i]|0x20 != s[i]|0x20 {
-				equals = false
+			if equals = b[i]|0x20 == s[i]|0x20; !equals {
 				break
 			}
 		}

@@ -10,9 +10,15 @@ var (
 	cstr = []byte("This StrING Must bE equAls")
 )
 
+func TestEqualsFold(t *testing.T) {
+	if !equalsFold(bstr, cstr) {
+		t.Fatal("equalsFold error")
+	}
+}
+
 func BenchmarkMineEqualFold(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		if !equalFold(bstr, cstr) {
+		if !equalsFold(bstr, cstr) {
 			b.Fatal("error checking equality")
 		}
 	}

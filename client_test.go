@@ -3,6 +3,7 @@ package fastws
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -73,8 +74,75 @@ func TestDial(t *testing.T) {
 	}
 }
 
+type hijackHandler struct {
+	h func(c *Conn)
+}
+
+func (h *hijackHandler) sendResponseUpgrade(ctx *fasthttp.RequestCtx) {
+	hkey := ctx.Request.Header.PeekBytes(wsHeaderKey)
+	ctx.Response.SetStatusCode(fasthttp.StatusSwitchingProtocols)
+	ctx.Response.Header.AddBytesKV(connectionString, upgradeString)
+	ctx.Response.Header.AddBytesK(upgradeString, "websocket")
+	ctx.Response.Header.AddBytesKV(wsHeaderAccept, makeKey(hkey, hkey))
+	ctx.Response.Header.AddBytesK(wsHeaderProtocol, "13")
+	ctx.Hijack(func(c net.Conn) {
+		conn := acquireConn(c)
+		conn.server = true
+		h.h(conn)
+		conn.Close()
+	})
+}
+
+func TestDialLowerCaseWebsocketString(t *testing.T) {
+	var text = []byte("Make fasthttp great again")
+	var uri = "http://localhost:9844/"
+	ln := fasthttputil.NewInmemoryListener()
+	hfn := func(conn *Conn) {
+		_, b, err := conn.ReadMessage(nil)
+		if err != nil {
+			panic(err)
+		}
+		if !bytes.Equal(b, text) {
+			panic(fmt.Sprintf("%s <> %s", b, text))
+		}
+	}
+
+	s := fasthttp.Server{
+		Handler: (&hijackHandler{hfn}).sendResponseUpgrade,
+	}
+	ch := make(chan struct{}, 1)
+	go func() {
+		s.Serve(ln)
+		ch <- struct{}{}
+	}()
+
+	c, err := ln.Dial()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := Client(c, uri)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = conn.Write(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conn.Close()
+	ln.Close()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second * 5):
+		t.Fatal("timeout")
+	}
+}
+
 func TestClientConcurrentWrite(t *testing.T) {
-	n := 10_000
+	n := 10000 // 10_000 not working for gofmt?
 	var text = []byte("Make fasthttp great again")
 	var uri = "http://localhost:9843/"
 	ln := fasthttputil.NewInmemoryListener()
@@ -167,7 +235,6 @@ loop:
 	}
 }
 
-
 func TestConnCloseWhileReading(t *testing.T) {
 	var uri = "http://localhost:9843/"
 	ln := fasthttputil.NewInmemoryListener()
@@ -185,7 +252,7 @@ func TestConnCloseWhileReading(t *testing.T) {
 					}
 				}
 			}()
-			time.Sleep(time.Millisecond*100)
+			time.Sleep(time.Millisecond * 100)
 			conn.Close()
 		},
 	}
@@ -208,12 +275,12 @@ func TestConnCloseWhileReading(t *testing.T) {
 		t.Fatal(err)
 	}
 
-		for {
-			_, _, err := conn.ReadMessage(nil)
-			if err != nil {
-				break
-			}
+	for {
+		_, _, err := conn.ReadMessage(nil)
+		if err != nil {
+			break
 		}
+	}
 
 	conn.Close()
 	ln.Close()
