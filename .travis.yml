@@ -2,6 +2,9 @@ language: go
 
 before_install:
   - go get github.com/valyala/fasthttp
+  - go get github.com/gobwas/ws
+  - go get github.com/gorilla/websocket
+  - go get nhooyr.io/websocket
 
 script:
     - go test -race -coverprofile=coverage.txt -covermode=atomic
