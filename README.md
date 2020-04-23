@@ -1,4 +1,7 @@
-# Fastws
+# fastws
+
+[![Build Status](https://travis-ci.com/dgrr/fastws.svg?branch=master)](https://travis-ci.com/dgrr/fastws)
+[![codecov](https://codecov.io/gh/dgrr/fastws/branch/master/graph/badge.svg)](https://codecov.io/gh/dgrr/fastws)
 
 Websocket library for [fasthttp](https://github.com/valyala/fasthttp). And now for net/http too.
 
