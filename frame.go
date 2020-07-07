@@ -495,9 +495,14 @@ func (fr *Frame) readFrom(r io.Reader) (int64, error) {
 		if err == nil {
 			// reading the payload
 			fr.op[2] &= 127 // quick fix to prevent overflow
-			if nn := fr.Len(); (fr.max > 0 && nn > fr.max) || nn > limitLen {
+			if frameSize := fr.Len(); (fr.max > 0 && frameSize > fr.max) || frameSize > limitLen {
 				err = errLenTooBig
-			} else if nn > 0 {
+			} else if frameSize > 0 { // read the payload
+				nn := int64(frameSize)
+				if nn < 0 {
+					panic("uint64 to int64 conversion gave a negative number")
+				}
+
 				isClose := fr.IsClose()
 				if isClose {
 					nn -= 2
@@ -506,8 +511,8 @@ func (fr *Frame) readFrom(r io.Reader) (int64, error) {
 					}
 				}
 
-				if err == nil {
-					if rLen := int64(nn) - int64(cap(fr.b)); rLen > 0 {
+				if err == nil && nn > 0 {
+					if rLen := nn - int64(cap(fr.b)); rLen > 0 {
 						fr.b = append(fr.b[:cap(fr.b)], make([]byte, rLen)...)
 					}
 
