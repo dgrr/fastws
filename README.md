@@ -3,18 +3,18 @@
 [![Build Status](https://travis-ci.com/dgrr/fastws.svg?branch=master)](https://travis-ci.com/dgrr/fastws)
 [![codecov](https://codecov.io/gh/dgrr/fastws/branch/master/graph/badge.svg)](https://codecov.io/gh/dgrr/fastws)
 
-Websocket library for [fasthttp](https://github.com/valyala/fasthttp). And now for net/http too.
+WebSocket library for [fasthttp](https://github.com/valyala/fasthttp). And now for net/http too.
 
 Checkout [examples](https://github.com/dgrr/fastws/blob/master/examples) to inspire yourself.
 
-# Why another websocket package?
+# Why another WebSocket package?
 
-Other websocket packages does not allow concurrent Read/Write operations
-and does not provide low level access to websocket packet crafting.
+Other WebSocket packages does not allow concurrent Read/Write operations
+and does not provide low level access to WebSocket packet crafting.
 
 Following the fasthttp philosophy this library tries to avoid extra-allocations
 while providing concurrent access to Read/Write operations and stable API to be used
-in production allowing low level access to the websocket frames.
+in production allowing low level access to the WebSocket frames.
 
 To see an example of what this package CAN do that others DONT checkout [this](https://github.com/dgrr/fastws/blob/master/examples/concurrent_server.go)
 or [this](https://github.com/dgrr/fastws/blob/master/examples/broadcast.go) examples.
@@ -28,8 +28,8 @@ You must specify the
 [Handler](https://godoc.org/github.com/dgrr/fastws#Upgrader.Handler)
 to handle the request.
 
-If you just want a websocket connection and don't want to be
-a websocket expert you can just
+If you just want a WebSocket connection and don't want to be
+a WebSocket expert you can just
 use [Upgrade](https://godoc.org/github.com/dgrr/fastws#Upgrade) function passing the
 handler.
 
@@ -43,7 +43,7 @@ func wsHandler(conn *Conn) {
 }
 ```
 
-After this point you can handle your awesome websocket connection.
+After this point you can handle your awesome WebSocket connection.
 The connection is automatically
 [closed](https://github.com/dgrr/fastws/blob/master/upgrader.go#L137)
 by fastws when you exit your handler. YES! You are able to close
@@ -52,7 +52,7 @@ your connection if you want to send a
 
 If you are looking for a low level usage of the library you can use the
 [Frame](https://godoc.org/github.com/dgrr/fastws#Frame) structure
-to handle frame by frame in a websocket connection.
+to handle frame by frame in a WebSocket connection.
 Also you can use
 [Conn.ReadFrame](https://godoc.org/github.com/dgrr/fastws#Conn.ReadFrame) or
 [Conn.NextFrame](https://godoc.org/github.com/dgrr/fastws#Conn.NextFrame) to read
