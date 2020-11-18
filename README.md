@@ -106,8 +106,8 @@ conn.WriteString("Hello")
 | Send pings and receive pongs            | Yes            | Yes          | Yes             | Yes          |
 | Get the type of a received data message | Yes            | Yes          | Yes             | Yes          |
 | Compression Extensions                  | On development | Experimental | Yes             | No (?)       |
-| Read message using io.Reader            | Non planned    | Yes          | No              | No (?)       |
-| Write message using io.WriteCloser      | Non planned    | Yes          | No              | No (?)       |
+| Read message using io.Reader            | Not planned    | Yes          | No              | No (?)       |
+| Write message using io.WriteCloser      | Not planned    | Yes          | No              | No (?)       |
 
 # Benchmarks: fastws vs gorilla vs nhooyr vs gobwas
 
