@@ -14,7 +14,6 @@ var (
 
 func TestIssue11(t *testing.T) {
 	fr := AcquireFrame()
-	// fr.SetBinary()
 	fr.SetClose()
 	fr.SetFin()
 	fr.setLength(1)

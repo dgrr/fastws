@@ -81,15 +81,29 @@ func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error)
 //
 // url parameter must follow WebSocket URL format i.e. ws://host:port/path
 func Dial(url string) (*Conn, error) {
-	return dial(url, nil)
+	cnf := &tls.Config{
+		InsecureSkipVerify: false,
+		MinVersion:         tls.VersionTLS11,
+	}
+	return dial(url, cnf, nil)
+}
+
+// DialTLS establishes a websocket connection as client with the
+// parsed tls.Config. The config will be used if the URL is wss:// like.
+func DialTLS(url string, cnf *tls.Config) (*Conn, error) {
+	return dial(url, cnf, nil)
 }
 
 // DialWithHeaders establishes a websocket connection as client sending a personalized request.
 func DialWithHeaders(url string, req *fasthttp.Request) (*Conn, error) {
-	return dial(url, req)
+	cnf := &tls.Config{
+		InsecureSkipVerify: false,
+		MinVersion:         tls.VersionTLS11,
+	}
+	return dial(url, cnf, req)
 }
 
-func dial(url string, req *fasthttp.Request) (conn *Conn, err error) {
+func dial(url string, cnf *tls.Config, req *fasthttp.Request) (conn *Conn, err error) {
 	uri := fasthttp.AcquireURI()
 	defer fasthttp.ReleaseURI(uri)
 	uri.Update(url)
@@ -114,10 +128,7 @@ func dial(url string, req *fasthttp.Request) (conn *Conn, err error) {
 	if scheme == "http" {
 		c, err = net.Dial("tcp", b2s(addr))
 	} else {
-		c, err = tls.Dial("tcp", b2s(addr), &tls.Config{
-			InsecureSkipVerify: false,
-			MinVersion:         tls.VersionTLS11,
-		})
+		c, err = tls.Dial("tcp", b2s(addr), cnf)
 	}
 	if err == nil {
 		conn, err = client(c, uri.String(), req)
