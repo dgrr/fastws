@@ -28,7 +28,10 @@ func ClientWithHeaders(c net.Conn, url string, req *fasthttp.Request) (*Conn, er
 	return client(c, url, req)
 }
 
-func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error) {
+// UpgradeAsClient will upgrade the connection as a client
+//
+// r can be nil.
+func UpgradeAsClient(c net.Conn, url string, r *fasthttp.Request) error {
 	req := fasthttp.AcquireRequest()
 	res := fasthttp.AcquireResponse()
 	uri := fasthttp.AcquireURI()
@@ -64,16 +67,24 @@ func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error)
 	bw := bufio.NewWriter(c)
 	req.Write(bw)
 	bw.Flush()
-	err = res.Read(br)
+	err := res.Read(br)
 	if err == nil {
 		if res.StatusCode() != 101 ||
 			!equalsFold(res.Header.PeekBytes(upgradeString), websocketString) {
 			err = ErrCannotUpgrade
-		} else {
-			conn = acquireConn(c)
-			conn.server = false
 		}
 	}
+
+	return err
+}
+
+func client(c net.Conn, url string, r *fasthttp.Request) (conn *Conn, err error) {
+	err = UpgradeAsClient(c, url, r)
+	if err == nil {
+		conn = acquireConn(c)
+		conn.server = false
+	}
+
 	return conn, err
 }
 
