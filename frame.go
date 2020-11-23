@@ -358,9 +358,9 @@ func (fr *Frame) setLength(n int) {
 
 // Mask performs the masking of the current payload
 func (fr *Frame) Mask() {
+	fr.op[1] |= maskBit
+	readMask(fr.mask)
 	if len(fr.b) > 0 {
-		fr.op[1] |= maskBit
-		readMask(fr.mask)
 		mask(fr.mask, fr.b)
 	}
 }
