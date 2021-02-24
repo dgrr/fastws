@@ -494,7 +494,6 @@ func (fr *Frame) readFrom(r io.Reader) (int64, error) {
 
 		if err == nil {
 			// reading the payload
-			fr.op[2] &= 127 // quick fix to prevent overflow
 			if frameSize := fr.Len(); (fr.max > 0 && frameSize > fr.max) || frameSize > limitLen {
 				err = errLenTooBig
 			} else if frameSize > 0 { // read the payload
