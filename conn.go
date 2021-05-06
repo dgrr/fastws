@@ -11,34 +11,6 @@ import (
 	"time"
 )
 
-// StatusCode is sent when closing a connection.
-//
-// The following constants have been defined by the RFC.
-type StatusCode uint16
-
-const (
-	// StatusNone is used to let the peer know nothing happened.
-	StatusNone StatusCode = 1000
-	// StatusGoAway peer's error.
-	StatusGoAway = 1001
-	// StatusProtocolError problem with the peer's way to communicate.
-	StatusProtocolError = 1002
-	// StatusNotAcceptable when a request is not acceptable
-	StatusNotAcceptable = 1003
-	// StatusReserved when a reserved field have been used
-	StatusReserved = 1004
-	// StatusNotConsistent IDK
-	StatusNotConsistent = 1007
-	// StatusViolation a violation of the protocol happened
-	StatusViolation = 1008
-	// StatusTooBig payload bigger than expected
-	StatusTooBig = 1009
-	// StatuseExtensionsNeeded IDK
-	StatuseExtensionsNeeded = 1010
-	// StatusUnexpected IDK
-	StatusUnexpected = 1011
-)
-
 // Mode is the mode in which the bytes are sended.
 //
 // https://tools.ietf.org/html/rfc6455#section-5.6

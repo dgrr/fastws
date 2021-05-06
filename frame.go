@@ -8,6 +8,61 @@ import (
 	"sync"
 )
 
+// StatusCode is sent when closing a connection.
+//
+// The following constants have been defined by the RFC.
+type StatusCode uint16
+
+const (
+	// StatusNone is used to let the peer know nothing happened.
+	StatusNone StatusCode = 1000
+	// StatusGoAway peer's error.
+	StatusGoAway = 1001
+	// StatusProtocolError problem with the peer's way to communicate.
+	StatusProtocolError = 1002
+	// StatusNotAcceptable when a request is not acceptable
+	StatusNotAcceptable = 1003
+	// StatusReserved when a reserved field have been used
+	StatusReserved = 1004
+	// StatusNotConsistent IDK
+	StatusNotConsistent = 1007
+	// StatusViolation a violation of the protocol happened
+	StatusViolation = 1008
+	// StatusTooBig payload bigger than expected
+	StatusTooBig = 1009
+	// StatuseExtensionsNeeded IDK
+	StatuseExtensionsNeeded = 1010
+	// StatusUnexpected IDK
+	StatusUnexpected = 1011
+)
+
+func (status StatusCode) String() string {
+	switch status {
+	case StatusNone:
+		return "None"
+	case StatusGoAway:
+		return "GoAway"
+	case StatusProtocolError:
+		return "ProtocolError"
+	case StatusNotAcceptable:
+		return "NotAcceptable"
+	case StatusReserved:
+		return "Reserved"
+	case StatusNotConsistent:
+		return "NotConsistent"
+	case StatusViolation:
+		return "Violation"
+	case StatusTooBig:
+		return "TooBig"
+	case StatuseExtensionsNeeded:
+		return "ExtensionsNeeded"
+	case StatusUnexpected:
+		return "Unexpected"
+	}
+
+	return ""
+}
+
 // Code to send.
 type Code uint8
 
@@ -185,7 +240,8 @@ func (fr *Frame) IsClose() bool {
 	return fr.Code() == CodeClose
 }
 
-// IsControl ...
+// IsControl returns whether the Frame is a control frame or not.
+// That means if it's a Close, Ping or Pong frame.
 func (fr *Frame) IsControl() bool {
 	return fr.IsClose() || fr.IsPing() || fr.IsPong()
 }
@@ -447,8 +503,8 @@ func (fr *Frame) mustRead() (n int) {
 var (
 	// EOF represents an io.EOF error.
 	EOF                = io.EOF
-	errMalformedHeader = errors.New("Malformed header")
-	errBadHeaderSize   = errors.New("Header size is insufficient")
+	errMalformedHeader = errors.New("malformed header")
+	errBadHeaderSize   = errors.New("header size is insufficient")
 )
 
 // ReadFrom fills fr reading from rd.
