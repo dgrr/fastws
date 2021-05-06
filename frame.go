@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 )
 
@@ -60,7 +61,7 @@ func (status StatusCode) String() string {
 		return "Unexpected"
 	}
 
-	return ""
+	return strconv.FormatInt(int64(status), 10)
 }
 
 // Code to send.
