@@ -97,7 +97,7 @@ conn.WriteString("Hello")
 
 # fastws vs gorilla vs nhooyr vs gobwas
 
-| Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/savsgio/websocket)| [Nhooyr](https://github.com/nhooyr/websocket) | [gowabs](https://github.com/gobwas/ws) |
+| Features | [fastws](https://github.com/dgrr/fastws) | [Gorilla](https://github.com/fasthttp/websocket)| [Nhooyr](https://github.com/nhooyr/websocket) | [gowabs](https://github.com/gobwas/ws) |
 | --- | --- | --- | --- | --- |
 | Concurrent R/W                          | Yes            | No           | No. Only writes | No           |
 | Passes Autobahn Test Suite              | Mostly         | Yes          | Yes             | Mostly       |    
